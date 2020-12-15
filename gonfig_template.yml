@@ -1,0 +1,70 @@
+global:
+  #  true | false
+  write: false
+  # "panic"|"fatal"|"error"|"warn"|"info"|"debug"|"trace"
+  logLevel: "debug"
+  runAtStart: true
+
+slack:
+  securityTokenBot: "<app_bot_token>"
+  securityTokenUser: "<app_user_token>"
+  infoChannel: "user-sync-notifications"
+  workspaceForChatLinks: "enterprise"
+
+pagerduty:
+  authToken: "<pd_token>"
+  apiUser: "pd_user_mail"
+
+
+# ┌───────────── minute (0 - 59)
+# │ ┌───────────── hour (0 - 23)
+# │ │ ┌───────────── day of the month (1 - 31)
+# │ │ │ ┌───────────── month (1 - 12)
+# │ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday;
+# │ │ │ │ │                                   7 is also Sunday on some systems)
+# │ │ │ │ │
+# │ │ │ │ │
+# * * * * * command to execute - it's fixed set to UTC, not local!
+jobs:
+  pd-schedules-on-duty-to-slack-group:
+    # job 1
+    - crontabExpressionForRepetition: 1 * * * *
+      handoverTimeFrameForward: "1h"
+      handoverTimeFrameBackward: "1h"
+      ifNoOneOnShiftLeaveTheOld: true
+      syncObjects:
+        slackGroupHandle: "onduty-1"
+        pdObjectIds:
+          - "pd_schedule_first_responder_id"
+          - "pd_schedule_second_responder_id"
+          - "pd_schedule_manager_id"
+
+    # job 2
+    - crontabExpressionForRepetition: 1 * * * *
+      handoverTimeFrameForward: "1h"
+      handoverTimeFrameBackward: "1h"
+      ifNoOneOnShiftLeaveTheOld: true
+      syncObjects:
+        slackGroupHandle: "onduty-2"
+        pdObjectIds:
+          - "pd_schedule_responder_id"
+
+    - ...
+
+  pd-teams-to-slack-group:
+    # job 1
+    - crontabExpressionForRepetition: 0 9 * * 1-5
+      syncObjects:
+        slackGroupHandle: "onduty-3"
+        pdObjectIds:
+          - "pd_team-1_id"
+          - "pd_team-2_id"
+
+    # job 2
+    - crontabExpressionForRepetition: 0 9 * * 1-5
+      syncObjects:
+        slackGroupHandle: "onduty-4"
+        pdObjectIds:
+          - "pd_team-3_id"
+
+    - ...
