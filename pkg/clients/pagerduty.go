@@ -1,5 +1,6 @@
 package clients
 
+import "C"
 import (
     "fmt"
     "github.com/ahmetb/go-linq"
@@ -69,66 +70,84 @@ func (c *PdClient) PdFilterUserWithoutPhone(ul []pagerduty.User) []pagerduty.Use
 
 // PdListOnCallUsers returns the OnCall users being on shift now
 func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration ) ([]pagerduty.User, []pagerduty.APIObject, error) {
-
      // distinct list of schedule metadata
     var sl []pagerduty.APIObject
-    linq.From(scheduleIDs).Distinct().SelectT(func (schedule string) pagerduty.APIObject{
-        sLO := pagerduty.GetScheduleOptions{}
-        scheduleO, err := c.pagerdutyClient.GetSchedule(schedule,sLO)
+
+
+    lo := pagerduty.GetScheduleOptions{
+        TimeZone: "UTC",
+        Since: util.TimestampToString(time.Now().Add(-sinceOffsetInHours)),
+        Until: util.TimestampToString(time.Now().Add(untilOffsetInHours)),
+    }
+    //lo = pagerduty.GetScheduleOptions{
+    //    TimeZone: "UTC",
+    //    Since: "2020-12-18 13:00:00",
+    //    Until: "2020-12-18 14:00:00",
+    //}
+
+    var ul []pagerduty.User
+    for _, schedule := range scheduleIDs {
+        var tul []pagerduty.User
+        scheduleO, err := c.pagerdutyClient.GetSchedule(schedule, lo)
         if err != nil{
-            return pagerduty.APIObject{
+            sl = append(sl, pagerduty.APIObject{
                 ID:      schedule,
                 Type:    "",
                 Summary: schedule,
                 Self:    "",
                 HTMLURL: "",
-            }
+            })
         }
-        return scheduleO.APIObject
-    }).ToSlice(&sl)
-
-    lo := pagerduty.ListOnCallOptions{
-        ScheduleIDs: scheduleIDs,
-        Since: util.TimestampToString(time.Now().Add(-sinceOffsetInHours)),
-        Until: util.TimestampToString(time.Now().Add(untilOffsetInHours)),
-        //Includes: []string{"users","schedules"}, // doesn't work - workaround sub request
-    }
-    onCallListD, err := c.pagerdutyClient.ListOnCalls(lo)
-    var ul []pagerduty.User
-
-    if err != nil {
-        return nil, nil, err
-    }
-
-    // distinct list of user on shift
-    linq.From(onCallListD.OnCalls).DistinctByT(
-            func(oC pagerduty.OnCall) string { return oC.User.ID },
-        ).SelectT(func(oC pagerduty.OnCall) pagerduty.User {
-
-        o := pagerduty.GetUserOptions{
-            Includes: []string{"contact_methods"},
-        }
-        u, err := c.pagerdutyClient.GetUser(oC.User.ID, o)
-
         if err != nil {
-            return pagerduty.User{
-                APIObject:         oC.User,
-                Name:              oC.User.Summary,
+            return nil, sl, err
+        }
+        sl = append(sl, scheduleO.APIObject)
+
+        if len(scheduleO.ScheduleLayers) > 0 {
+            // add rendered layers
+            linq.From(scheduleO.ScheduleLayers).SelectManyByT(
+                func (sL pagerduty.ScheduleLayer) linq.Query { return linq.From(sL.RenderedScheduleEntries) },
+                func (rse pagerduty.RenderedScheduleEntry, sL pagerduty.ScheduleLayer) pagerduty.User {
+                    o := pagerduty.GetUserOptions{
+                    Includes: []string{"contact_methods"},
+                    }
+                    u, err := c.pagerdutyClient.GetUser(rse.User.ID, o)
+                    if err != nil {
+                        return pagerduty.User{
+                            APIObject:         rse.User,
+                            Name:              rse.User.Summary,
+                        }
+                    }
+                    return *u
+                },
+            ).DistinctByT(func(t pagerduty.User) string { return t.ID}).ToSlice(&tul)
+
+            ul = append(ul, tul...)
+
+            // also add overrides
+            if len(scheduleO.OverrideSubschedule.RenderedScheduleEntries) > 0 {
+
+                linq.From(scheduleO.OverrideSubschedule).SelectManyByT(
+                    func (sL pagerduty.ScheduleLayer) linq.Query { return linq.From(sL.RenderedScheduleEntries) },
+                    func (rse pagerduty.RenderedScheduleEntry, sL pagerduty.ScheduleLayer) pagerduty.User {
+                        o := pagerduty.GetUserOptions{
+                            Includes: []string{"contact_methods"},
+                        }
+                        u, err := c.pagerdutyClient.GetUser(rse.User.ID, o)
+                        if err != nil {
+                            return pagerduty.User{
+                                APIObject:         rse.User,
+                                Name:              rse.User.Summary,
+                            }
+                        }
+                        return *u
+                    },
+                ).DistinctByT(func(t pagerduty.User) string { return t.ID }).ToSlice(&tul)
+
+                ul = append(ul, tul...)
             }
         }
-        return *u
-
-    }).ToSlice(&ul)
-
-
-
-   // // distinct list of schedule metadata
-   // linq.From(onCallListD.OnCalls).DistinctByT(
-   //     func(oC pagerduty.OnCall) string {
-   //         return oC.Schedule.ID
-   //     }).SelectT(func (oC pagerduty.OnCall) pagerduty.APIObject{
-   //         return oC.Schedule
-   // }).ToSlice(&sl)
+    }
 
     return ul, sl, nil
 }

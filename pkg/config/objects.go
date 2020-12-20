@@ -21,8 +21,9 @@ type JobInfo struct{
     Cfg Config
     JobCounter int
     PdObjects []pagerduty.APIObject
-    PdObjectMemberCount int
+    PdObjectMember []pagerduty.User
     SlackGroupObject slack.UserGroup
+    SlackGroupUser []slack.User
     WriteChanges bool
     JobType ObjectSyncType
     ObjectsToSync SyncObjects
@@ -43,7 +44,7 @@ func (jIS JobInfo) PagerDutyIds() []string {
     return jIS.Cfg.Jobs.ScheduleSync[jIS.JobCounter].ObjectsToSync.PagerdutyObjectId
 
 }
-func (jIS JobInfo) GetSlackUserNames(asLink bool) []string {
+func (jIS JobInfo) getSlackUserNames(asLink bool) []string {
     var uN []string
     if jIS.SlackGroupObject.ID == "" {
         return uN
@@ -107,10 +108,11 @@ func (jIS JobInfo) GetSlackInfoMessage() slack.MsgOption {
     })
     fields = append(fields, &slack.TextBlockObject{
         Type:     slack.MarkdownType,
-        Text:     fmt.Sprintf("*Member Count:*\nPagerDuty: `%d` / Slack: `%d`", jIS.PdObjectMemberCount,len(jIS.SlackGroupObject.Users)),
+        Text:     fmt.Sprintf("*Member Count:*\nPagerDuty: `%d` / Slack: `%d`", len(jIS.PdObjectMember),len(jIS.SlackGroupObject.Users)),
         Emoji:    false,
         Verbatim: false,
     })
+
     //if jIS.JobType == PdScheduleSync {
     //    fields = append(fields, &slack.TextBlockObject{
     //        Type:     slack.MarkdownType,

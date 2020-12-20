@@ -53,7 +53,7 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) config.JobInfo {
 
     pdUsers, pdSchedules, err := pdC.PdListOnCallUsers(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].ObjectsToSync.PagerdutyObjectId, tfF, tfB)
     jI.PdObjects = pdSchedules
-    jI.PdObjectMemberCount = len(pdUsers)
+    jI.PdObjectMember = pdUsers
     if err != nil {
         jI.Error = err
         return jI
@@ -61,14 +61,14 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) config.JobInfo {
 
 
     // get all SLACK users, bcz. we need the SLACK user id and match them with the ldap users
-    slackUserFilteredList, err := cfct.GetSlackUser(pdUsers)
+    jI.SlackGroupUser, err = cfct.GetSlackUser(pdUsers)
     if err != nil {
         jI.Error = err
         return jI
     }
 
     // put ldap users which also have a slack account to our slack group (who's not in the ldap group is out)
-    cfct.SetSlackGroupUser(&jI, slackUserFilteredList)
+    cfct.SetSlackGroupUser(&jI, jI.SlackGroupUser)
     return jI
 }
 
@@ -86,7 +86,7 @@ func addTeamMembersToGroups(jI config.JobInfo) config.JobInfo {
     pdC, _ := cfct.PdNewClient(&jI.Cfg.Pagerduty)
     pdUsers, pdTeams, err := pdC.PdGetTeamMembers(jI.PagerDutyIds())
     jI.PdObjects = pdTeams
-    jI.PdObjectMemberCount = len(pdUsers)
+    jI.PdObjectMember = pdUsers
     if err != nil {
         jI.Error = err
         return jI

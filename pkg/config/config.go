@@ -47,7 +47,7 @@ type SlackConfig struct {
     Workspace string `yaml:"workspaceForChatLinks"`
 }
 
-// Pagerduty Struct
+// PagerdutyConfig Struct
 type PagerdutyConfig struct {
     // Token to authenticate
     AuthToken string `yaml:"authToken"`
