@@ -54,19 +54,24 @@ type PagerdutyConfig struct {
     ApiUser string `yaml:"apiUser"`
 }
 
+// PagerdutyScheduleOnDutyToSlackGroup Struct
 type PagerdutyScheduleOnDutyToSlackGroup struct {
     CrontabExpressionForRepetition string `yaml:"crontabExpressionForRepetition"`
     HandoverTimeFrameForward string `yaml:"handoverTimeFrameForward"`
     HandoverTimeFrameBackward string `yaml:"handoverTimeFrameBackward"`
-    IfNoOneOnShiftLeaveTheOld bool `yaml:"ifNoOneOnShiftLeaveTheOld"`
+    DisableHandleIfNoneOnShift bool `yaml:"disableSlackHandleTemporaryIfNoneOnShift"`
+    CheckUserContactForPhoneSet bool `yaml:"informUserIfContactPhoneNumberMissing"`
     ObjectsToSync SyncObjects `yaml:"syncObjects"`
 }
 
+// PagerdutyTeamToSlackGroup Struct
 type PagerdutyTeamToSlackGroup struct {
     CrontabExpressionForRepetition string `yaml:"crontabExpressionForRepetition"`
+    CheckUserContactForPhoneSet bool `yaml:"informUserIfContactPhoneNumberMissing"`
     ObjectsToSync SyncObjects `yaml:"syncObjects"`
 }
 
+// SyncObjects Struct
 type SyncObjects struct {
     SlackGroupHandle string `yaml:"slackGroupHandle"`
     PagerdutyObjectId []string `yaml:"pdObjectIds"`

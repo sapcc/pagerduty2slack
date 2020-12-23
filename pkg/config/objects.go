@@ -2,34 +2,37 @@ package config
 
 import (
     "fmt"
+    "strings"
+    "time"
+
     "github.com/PagerDuty/go-pagerduty"
     "github.com/ahmetb/go-linq"
     "github.com/robfig/cron"
     "github.com/slack-go/slack"
-    "strings"
-    "time"
 )
 
 type ObjectSyncType string
-const(
+
+const (
     PdScheduleSync ObjectSyncType = "PD Schedule"
-    PdTeamSync = "PD Team"
+    PdTeamSync                    = "PD Team"
 )
 
-type JobInfo struct{
-    Error error
-    Cfg Config
-    JobCounter int
-    PdObjects []pagerduty.APIObject
-    PdObjectMember []pagerduty.User
+type JobInfo struct {
+    Error            error
+    Cfg              Config
+    JobCounter       int
+    PdObjects        []pagerduty.APIObject
+    PdObjectMember   []pagerduty.User
     SlackGroupObject slack.UserGroup
-    SlackGroupUser []slack.User
-    WriteChanges bool
-    JobType ObjectSyncType
-    ObjectsToSync SyncObjects
-    CronJobId cron.EntryID
-    CronObject *cron.Cron
+    SlackGroupUser   []slack.User
+    WriteChanges     bool
+    JobType          ObjectSyncType
+    ObjectsToSync    SyncObjects
+    CronJobId        cron.EntryID
+    CronObject       *cron.Cron
 }
+
 func (jIS JobInfo) SlackHandleId() string {
     if jIS.JobType == PdTeamSync {
         return jIS.Cfg.Jobs.TeamSync[jIS.JobCounter].ObjectsToSync.SlackGroupHandle
@@ -38,7 +41,7 @@ func (jIS JobInfo) SlackHandleId() string {
 }
 func (jIS JobInfo) PagerDutyIds() []string {
 
-    if jIS.JobType == PdTeamSync  {
+    if jIS.JobType == PdTeamSync {
         return jIS.Cfg.Jobs.TeamSync[jIS.JobCounter].ObjectsToSync.PagerdutyObjectId
     }
     return jIS.Cfg.Jobs.ScheduleSync[jIS.JobCounter].ObjectsToSync.PagerdutyObjectId
@@ -50,8 +53,8 @@ func (jIS JobInfo) getSlackUserNames(asLink bool) []string {
         return uN
     }
     if asLink {
-        linq.From(jIS.SlackGroupObject.Users).SelectT(func (u string) string{
-            return fmt.Sprintf("https://%s.slack.com/user/@%s",jIS.Cfg.Slack.Workspace,u)
+        linq.From(jIS.SlackGroupObject.Users).SelectT(func(u string) string {
+            return fmt.Sprintf("https://%s.slack.com/user/@%s", jIS.Cfg.Slack.Workspace, u)
         }).ToSlice(&uN)
         return uN
     }
@@ -80,13 +83,12 @@ func (jIS JobInfo) GetSlackInfoMessage() slack.MsgOption {
 
     divSection := slack.NewDividerBlock()
 
-    sHeaderText := fmt.Sprintf("%s %s > Slack `%s`",jIS.getIcon(), jIS.JobType, jIS.SlackHandleId())
+    sHeaderText := fmt.Sprintf("%s %s > Slack `%s`", jIS.getIcon(), jIS.JobType, jIS.SlackHandleId())
     if !jIS.WriteChanges {
         sHeaderText += " - !!! DRY RUN !!! No update done !!!"
     }
     headerText := slack.NewTextBlockObject(slack.MarkdownType, sHeaderText, false, false)
     headerSection := slack.NewSectionBlock(headerText, nil, nil)
-
 
     var errorText *slack.TextBlockObject
     var errorSection *slack.SectionBlock
@@ -98,17 +100,27 @@ func (jIS JobInfo) GetSlackInfoMessage() slack.MsgOption {
     var fields []*slack.TextBlockObject
     var sL []string
     for _, aO := range jIS.PdObjects {
-        sL = append(sL,fmt.Sprintf("<%s|%s>", aO.HTMLURL, aO.Summary))
+        sL = append(sL, fmt.Sprintf("<%s|%s>", aO.HTMLURL, aO.Summary))
     }
     fields = append(fields, &slack.TextBlockObject{
         Type:     slack.MarkdownType,
-        Text:     fmt.Sprintf("*PD Source*\n%s", strings.Join(sL,"\n")),
+        Text:     fmt.Sprintf("*PD Source*\n%s", strings.Join(sL, "\n")),
         Emoji:    false,
         Verbatim: false,
     })
+    //fields = append(fields, &slack.TextBlockObject{
+    //	Type:     slack.MarkdownType,
+    //	Text:     fmt.Sprintf("*Member Count:*\nPagerDuty: `%d` / Slack: `%d`", len(jIS.PdObjectMember), len(jIS.SlackGroupObject.Users)),
+    //	Emoji:    false,
+    //	Verbatim: false,
+    //})
+    var uL []string
+    linq.From(jIS.SlackGroupUser).SelectT(func(u slack.User) string {
+        return u.Profile.DisplayNameNormalized
+    }).ToSlice(&uL)
     fields = append(fields, &slack.TextBlockObject{
         Type:     slack.MarkdownType,
-        Text:     fmt.Sprintf("*Member Count:*\nPagerDuty: `%d` / Slack: `%d`", len(jIS.PdObjectMember),len(jIS.SlackGroupObject.Users)),
+        Text:     fmt.Sprintf("*Who is on shift:*\n -%s", strings.Join(uL, ",\n -")),
         Emoji:    false,
         Verbatim: false,
     })
@@ -131,7 +143,7 @@ func (jIS JobInfo) GetSlackInfoMessage() slack.MsgOption {
     jobSection := slack.NewSectionBlock(nil, fields, nil)
 
     if errorSection != nil {
-        return slack.MsgOptionBlocks(headerSection,errorSection,jobSection,divSection)
+        return slack.MsgOptionBlocks(headerSection, errorSection, jobSection, divSection)
     }
-    return slack.MsgOptionBlocks(headerSection,jobSection,divSection)
+    return slack.MsgOptionBlocks(headerSection, jobSection, divSection)
 }

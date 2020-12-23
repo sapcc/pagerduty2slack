@@ -120,7 +120,7 @@ func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours ti
                     }
                     return *u
                 },
-            ).DistinctByT(func(t pagerduty.User) string { return t.ID}).ToSlice(&tul)
+            ).ToSlice(&tul)
 
             ul = append(ul, tul...)
 
@@ -142,12 +142,13 @@ func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours ti
                         }
                         return *u
                     },
-                ).DistinctByT(func(t pagerduty.User) string { return t.ID }).ToSlice(&tul)
+                ).ToSlice(&tul)
 
                 ul = append(ul, tul...)
             }
         }
     }
+    linq.From(ul).DistinctByT(func (u pagerduty.User) string {return u.ID}).ToSlice(&ul)
 
     return ul, sl, nil
 }

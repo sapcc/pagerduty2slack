@@ -31,7 +31,8 @@ jobs:
     - crontabExpressionForRepetition: 1 * * * *
       handoverTimeFrameForward: "1h"
       handoverTimeFrameBackward: "1h"
-      ifNoOneOnShiftLeaveTheOld: true
+      disableSlackHandleTemporaryIfNoneOnShift: true
+      informUserIfContactPhoneNumberMissing: true
       syncObjects:
         slackGroupHandle: "onduty-1"
         pdObjectIds:
@@ -43,7 +44,8 @@ jobs:
     - crontabExpressionForRepetition: 1 * * * *
       handoverTimeFrameForward: "1h"
       handoverTimeFrameBackward: "1h"
-      ifNoOneOnShiftLeaveTheOld: true
+      disableSlackHandleTemporaryIfNoneOnShift: true
+      informUserIfContactPhoneNumberMissing: true
       syncObjects:
         slackGroupHandle: "onduty-2"
         pdObjectIds:
@@ -54,6 +56,7 @@ jobs:
   pd-teams-to-slack-group:
     # job 1
     - crontabExpressionForRepetition: 0 9 * * 1-5
+      informUserIfContactPhoneNumberMissing: true
       syncObjects:
         slackGroupHandle: "onduty-3"
         pdObjectIds:
@@ -62,6 +65,7 @@ jobs:
 
     # job 2
     - crontabExpressionForRepetition: 0 9 * * 1-5
+      informUserIfContactPhoneNumberMissing: false
       syncObjects:
         slackGroupHandle: "onduty-4"
         pdObjectIds:
