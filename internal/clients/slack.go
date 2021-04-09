@@ -7,7 +7,7 @@ import (
     "github.com/PagerDuty/go-pagerduty"
     log "github.com/Sirupsen/logrus"
     "github.com/ahmetb/go-linq"
-    "github.com/sapcc/pagerduty2slack/pkg/config"
+    "github.com/sapcc/pagerduty2slack/internal/config"
     "github.com/slack-go/slack"
     "strings"
     "sync"
@@ -165,7 +165,9 @@ func GetSlackUser(pdUsers []pagerduty.User) ([]slack.User, error) {
 
 // SetSlackGroupUser sets an array of Slack User to an Slack Group (found by name)
 //func SetSlackGroupUser(slackGroupHandle string, slackUser []slack.User, bWrite bool) error {
-func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User)  {
+func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User)  bool {
+
+    var bNoChange = true
 
     defer func() {
         if r := recover(); r != nil {
@@ -191,12 +193,23 @@ func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User)  {
         return u.ID
     }).Distinct().ToSlice(&slackUserIds)
 
-    if jI.WriteChanges {
-        for i, user := range slackUser {
-        	log.Debug(fmt.Printf("%d. Name: %s\n", i, user.Name))
-        }
 
-        //log.Debug(fmt.Sprintf("%s: %s",targetGroup.Name,strings.Join(slackUserIds, ",")))
+    if len(slackUser) == len(jI.SlackGroupObject.Users) {
+        for _, user := range slackUser {
+            if !linq.From(jI.SlackGroupObject.Users).Contains(user) {
+                bNoChange = false
+                continue
+            }
+            bNoChange = true
+        }
+    } else {
+        bNoChange = false
+    }
+
+
+    if jI.WriteChanges && !bNoChange {
+
+        //log.Debug(fmt.Sprintf("%s: %s",targetGroup.Name,strings.Join(slackUserIds, ","))
 
         userGroup, err := defaultSlackClientUser.UpdateUserGroupMembers(jI.SlackGroupObject.ID, strings.Join(slackUserIds, ","))
         if err != nil {
@@ -205,11 +218,31 @@ func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User)  {
         } else {
             log.Println("SLACK> changes were written!", userGroup)
         }
+        if userGroup.DateDelete.String() == "" {
+            _, err = defaultSlackClientUser.EnableUserGroup(jI.SlackGroupObject.ID)
+            if err != nil {
+                log.Error("SLACK", "> SLACK error: ", err)
+                jI.Error = err
+            }
+        }
+
     } else {
         log.Println("SLACK> no changes were written, because flag 'bWrite' was set to 'false'")
     }
 
     log.Info(fmt.Sprintf("Group %s has `%d` member(s)", jI.SlackGroupObject.Name, len(slackUser)))
+
+    return bNoChange
+}
+
+func DisableSlackGroup(jI *config.JobInfo) {
+    userGroup, err := defaultSlackClientUser.DisableUserGroup(jI.SlackGroupObject.ID)
+    if err != nil {
+        log.Error("SLACK", "> SLACK error: ", err)
+        jI.Error = err
+    } else {
+        log.Println("SLACK> group disabled!", userGroup)
+    }
 }
 
 // GetChannels gives the Channels with Members & co

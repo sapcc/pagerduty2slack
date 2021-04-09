@@ -6,8 +6,8 @@ import (
     log "github.com/Sirupsen/logrus"
 
     "github.com/robfig/cron"
-    cfct "github.com/sapcc/pagerduty2slack/pkg/clients"
-    "github.com/sapcc/pagerduty2slack/pkg/config"
+    cfct "github.com/sapcc/pagerduty2slack/internal/clients"
+    "github.com/sapcc/pagerduty2slack/internal/config"
 
     "os"
     "os/signal"
@@ -34,24 +34,27 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) config.JobInfo {
     log.Info(jI.JobName())
 
     // find members of given group
-    pdC,_ := cfct.PdNewClient(&jI.Cfg.Pagerduty)
+    pdC, err := cfct.PdNewClient(&jI.Cfg.Pagerduty)
+    if err != nil {
+        log.Fatal(err)
+    }
 
-    tfF, err := time.ParseDuration(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].HandoverTimeFrameForward)
+    tfF, err := time.ParseDuration(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.HandoverTimeFrameForward)
     if err != nil {
        tfF = time.Nanosecond * 0
-       eS := fmt.Sprintf("Invalid duration given in job %d: %s", jI.JobCounter, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].HandoverTimeFrameForward)
+       eS := fmt.Sprintf("Invalid duration given in job %d: %s", jI.JobCounter, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.HandoverTimeFrameForward)
        log.Warnf(eS)
        jI.Error = fmt.Errorf(eS)
     }
-    tfB, err := time.ParseDuration(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].HandoverTimeFrameBackward)
+    tfB, err := time.ParseDuration(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.HandoverTimeFrameBackward)
     if err != nil {
        tfB = time.Nanosecond * 0
-       eS := fmt.Sprintf("Invalid duration given in job %d: %s. Use default 0. (%s)", jI.JobCounter, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].HandoverTimeFrameBackward, err)
+       eS := fmt.Sprintf("Invalid duration given in job %d: %s. Use default 0. (%s)", jI.JobCounter, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.HandoverTimeFrameBackward, err)
        log.Warnf(eS)
        jI.Error = fmt.Errorf(eS)
     }
 
-    pdUsers, pdSchedules, err := pdC.PdListOnCallUsers(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].ObjectsToSync.PagerdutyObjectId, tfF, tfB)
+    pdUsers, pdSchedules, err := pdC.PdListOnCallUsers(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].ObjectsToSync.PagerdutyObjectId, tfF, tfB, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.TakeTheLayersNotTheFinal)
     jI.PdObjects = pdSchedules
     jI.PdObjectMember = pdUsers
     if err != nil {
@@ -105,12 +108,12 @@ func addTeamMembersToGroups(jI config.JobInfo) config.JobInfo {
         return jI
     }
 
-    // put pd users which also have a slack account to our slack group (who's not in the ldap group is out)
-    cfct.SetSlackGroupUser(&jI, slackUserFilteredList)
-    if err != nil {
-        jI.Error = err
-        return jI
+    if len(slackUserFilteredList) == 0 && jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.DisableSlackHandleTemporaryIfNoneOnShift {
+        cfct.DisableSlackGroup(&jI)
+    } else {
+        cfct.SetSlackGroupUser(&jI, slackUserFilteredList)
     }
+
     return jI
 }
 
@@ -207,7 +210,7 @@ func main() {
         for rc, e := range c.Entries() {
             if rc == 0 {continue}
 
-            log.Debug(fmt.Sprintf("Job %d: next run %s; valid: %v", e.ID, e.Job, e.Valid() ))
+            log.Debug(fmt.Sprintf("Job %d: next run %s; valid: %v", e.ID, e.Next, e.Valid() ))
             if e.Valid() {
                 c.Entry(e.ID).WrappedJob.Run()
             }

@@ -28,7 +28,7 @@ type GlobalConfig struct {
     Write bool `yaml:"write"`
 
     RecheckInterval time.Duration
-
+    // if true all task run at start
     RunAtStart bool `yaml:"runAtStart"`
 }
 
@@ -57,11 +57,19 @@ type PagerdutyConfig struct {
 // PagerdutyScheduleOnDutyToSlackGroup Struct
 type PagerdutyScheduleOnDutyToSlackGroup struct {
     CrontabExpressionForRepetition string `yaml:"crontabExpressionForRepetition"`
-    HandoverTimeFrameForward string `yaml:"handoverTimeFrameForward"`
-    HandoverTimeFrameBackward string `yaml:"handoverTimeFrameBackward"`
     DisableHandleIfNoneOnShift bool `yaml:"disableSlackHandleTemporaryIfNoneOnShift"`
     CheckUserContactForPhoneSet bool `yaml:"informUserIfContactPhoneNumberMissing"`
+    SyncOptions ScheduleSyncOptions `yaml:"syncOptions"`
     ObjectsToSync SyncObjects `yaml:"syncObjects"`
+}
+
+// SyncOptions Struct
+type ScheduleSyncOptions struct {
+    HandoverTimeFrameForward string `yaml:"handoverTimeFrameForward"`
+    HandoverTimeFrameBackward string `yaml:"handoverTimeFrameBackward"`
+    DisableSlackHandleTemporaryIfNoneOnShift bool `yaml:"disableSlackHandleTemporaryIfNoneOnShift"`
+    InformUserIfContactPhoneNumberMissing bool `yaml:"informUserIfContactPhoneNumberMissing"`
+    TakeTheLayersNotTheFinal bool `yaml:"takeTheLayersNotTheFinal"`
 }
 
 // PagerdutyTeamToSlackGroup Struct
@@ -70,6 +78,7 @@ type PagerdutyTeamToSlackGroup struct {
     CheckUserContactForPhoneSet bool `yaml:"informUserIfContactPhoneNumberMissing"`
     ObjectsToSync SyncObjects `yaml:"syncObjects"`
 }
+
 
 // SyncObjects Struct
 type SyncObjects struct {

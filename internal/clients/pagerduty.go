@@ -1,6 +1,5 @@
 package clients
 
-import "C"
 import (
     "fmt"
     "github.com/ahmetb/go-linq"
@@ -9,10 +8,10 @@ import (
 
     "github.com/PagerDuty/go-pagerduty"
     "github.com/pkg/errors"
-    "github.com/sapcc/pagerduty2slack/pkg/config"
+    "github.com/sapcc/pagerduty2slack/internal/config"
 )
 
-// PagerdutyClient wraps the pagerduty client.
+// PdClient wraps the pagerduty client.
 type PdClient struct {
     cfg             *config.PagerdutyConfig
     pagerdutyClient *pagerduty.Client
@@ -40,7 +39,7 @@ func PdNewClient(cfg *config.PagerdutyConfig) (*PdClient, error) {
     return c, nil
 }
 
-// GetUserByEmail returns the pagerduty user for the given email or an error.
+// PdGetUserByEmail returns the pagerduty user for the given email or an error.
 func (c *PdClient) PdGetUserByEmail(email string) (*pagerduty.User, error) {
     userList, err := c.pagerdutyClient.ListUsers(pagerduty.ListUsersOptions{Query: email})
     if err != nil {
@@ -68,22 +67,76 @@ func (c *PdClient) PdFilterUserWithoutPhone(ul []pagerduty.User) []pagerduty.Use
     return ulf
 }
 
+
 // PdListOnCallUsers returns the OnCall users being on shift now
-func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration ) ([]pagerduty.User, []pagerduty.APIObject, error) {
+func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration, bLayer bool) ([]pagerduty.User, []pagerduty.APIObject, error) {
+    if bLayer == false {
+        return c.pdListOnCallUsersFinal(scheduleIDs, sinceOffsetInHours, untilOffsetInHours)
+    } else {
+        return c.pdListOnCallUsersLayers(scheduleIDs, sinceOffsetInHours, untilOffsetInHours)
+    }
+}
+func (c *PdClient) pdListOnCallUsersFinal (scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration ) ([]pagerduty.User, []pagerduty.APIObject, error) {
+
+    lo := pagerduty.ListOnCallOptions{
+        ScheduleIDs: scheduleIDs,
+        Since: util.TimestampToString(time.Now().Add(-sinceOffsetInHours)),
+        Until: util.TimestampToString(time.Now().Add(untilOffsetInHours)),
+        //Includes: []string{"users","schedules"}, // doesn't work - workaround sub request
+    }
+    onCallListD, err := c.pagerdutyClient.ListOnCalls(lo)
+    var ul []pagerduty.User
+
+    if err != nil {
+        return nil, nil, err
+    }
+
+    var sl []pagerduty.APIObject
+    // distinct list of user on shift
+    linq.From(onCallListD.OnCalls).DistinctByT(
+            func(oC pagerduty.OnCall) string { return oC.User.ID },
+        ).SelectT(func(oC pagerduty.OnCall) pagerduty.User {
+
+        o := pagerduty.GetUserOptions{
+            Includes: []string{"contact_methods"},
+        }
+        u, err := c.pagerdutyClient.GetUser(oC.User.ID, o)
+
+        if err != nil {
+            sl = append(sl, oC.User)
+            return pagerduty.User{
+                APIObject:         oC.User,
+                Name:              oC.User.Summary,
+            }
+        }
+        return *u
+
+    }).ToSlice(&ul)
+    return ul, sl, nil
+}
+
+func (c *PdClient) pdListOnCallUsersLayers (scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration ) ([]pagerduty.User, []pagerduty.APIObject, error) {
      // distinct list of schedule metadata
     var sl []pagerduty.APIObject
 
 
     lo := pagerduty.GetScheduleOptions{
-        TimeZone: "UTC",
-        Since: util.TimestampToString(time.Now().Add(-sinceOffsetInHours)),
-        Until: util.TimestampToString(time.Now().Add(untilOffsetInHours)),
+       TimeZone: "UTC",
+       Since: util.TimestampToString(time.Now().Add(-sinceOffsetInHours)),
+       Until: util.TimestampToString(time.Now().Add(untilOffsetInHours)),
     }
-    //lo = pagerduty.GetScheduleOptions{
-    //    TimeZone: "UTC",
-    //    Since: "2020-12-18 13:00:00",
-    //    Until: "2020-12-18 14:00:00",
-    //}
+
+    /*
+    lo := pagerduty.GetScheduleOptions{
+        TimeZone: "UTC",
+        Since: "2021-03-03 13:00:00",
+        Until: "2021-03-03 14:00:00",
+    }*/
+    defer func() {
+        if r := recover(); r != nil {
+            fmt.Sprintf("PROGRAMMER FAIL > %s", r.(error))
+        }
+    }()
 
     var ul []pagerduty.User
     for _, schedule := range scheduleIDs {
@@ -114,8 +167,8 @@ func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours ti
                     u, err := c.pagerdutyClient.GetUser(rse.User.ID, o)
                     if err != nil {
                         return pagerduty.User{
-                            APIObject:         rse.User,
-                            Name:              rse.User.Summary,
+                            APIObject: rse.User,
+                            Name:      rse.User.Summary,
                         }
                     }
                     return *u
