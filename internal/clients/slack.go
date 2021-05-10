@@ -207,7 +207,7 @@ func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User)  bool {
     }
 
 
-    if jI.WriteChanges && !bNoChange {
+    if jI.Cfg.Global.Write && !bNoChange {
 
         //log.Debug(fmt.Sprintf("%s: %s",targetGroup.Name,strings.Join(slackUserIds, ","))
 

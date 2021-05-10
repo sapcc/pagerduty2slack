@@ -19,19 +19,21 @@ const (
 )
 
 type JobInfo struct {
-    Error            error
-    Cfg              Config
-    JobCounter       int
-    PdObjects        []pagerduty.APIObject
-    PdObjectMember   []pagerduty.User
+    Error                       error
+    Cfg                         Config
+    JobCounter                  int
+    JobRunComment               string
+    PdObjects                   []pagerduty.APIObject
+    PdObjectMember              []pagerduty.User
+    PdObjectMemberWithoutContact []pagerduty.User
+    PdObjectMemberWithoutSlack   []pagerduty.User
     SlackGroupObject slack.UserGroup
     SlackGroupUser   []slack.User
-    WriteChanges     bool
     JobType          ObjectSyncType
-    ObjectsToSync    SyncObjects
     CronJobId        cron.EntryID
     CronObject       *cron.Cron
 }
+
 
 func (jIS JobInfo) SlackHandleId() string {
     if jIS.JobType == PdTeamSync {
@@ -83,8 +85,8 @@ func (jIS JobInfo) GetSlackInfoMessage() slack.MsgOption {
 
     divSection := slack.NewDividerBlock()
 
-    sHeaderText := fmt.Sprintf("%s %s > Slack `%s`", jIS.getIcon(), jIS.JobType, jIS.SlackHandleId())
-    if !jIS.WriteChanges {
+    sHeaderText := fmt.Sprintf("%s %s > Slack Handle: `%s`", jIS.getIcon(), jIS.JobType, jIS.SlackHandleId())
+    if !jIS.Cfg.Global.Write {
         sHeaderText += " - !!! DRY RUN !!! No update done !!!"
     }
     headerText := slack.NewTextBlockObject(slack.MarkdownType, sHeaderText, false, false)
@@ -108,31 +110,13 @@ func (jIS JobInfo) GetSlackInfoMessage() slack.MsgOption {
         Emoji:    false,
         Verbatim: false,
     })
-    //fields = append(fields, &slack.TextBlockObject{
-    //	Type:     slack.MarkdownType,
-    //	Text:     fmt.Sprintf("*Member Count:*\nPagerDuty: `%d` / Slack: `%d`", len(jIS.PdObjectMember), len(jIS.SlackGroupObject.Users)),
-    //	Emoji:    false,
-    //	Verbatim: false,
-    //})
-    var uL []string
-    linq.From(jIS.SlackGroupUser).SelectT(func(u slack.User) string {
-        return u.Profile.DisplayNameNormalized
-    }).ToSlice(&uL)
-    fields = append(fields, &slack.TextBlockObject{
-        Type:     slack.MarkdownType,
-        Text:     fmt.Sprintf("*Who is on shift:*\n -%s", strings.Join(uL, ",\n -")),
-        Emoji:    false,
-        Verbatim: false,
-    })
 
-    //if jIS.JobType == PdScheduleSync {
-    //    fields = append(fields, &slack.TextBlockObject{
-    //        Type:     slack.MarkdownType,
-    //        Text:     fmt.Sprintf("*On Duty:*\n-%s", strings.Join(jIS.GetSlackUserNames(true), "\n- ")),
-    //        Emoji:    false,
-    //        Verbatim: false,
-    //    })
-    //}
+    if jIS.JobType == PdScheduleSync {
+        fields = append(fields, jIS.getSlackInfoMessageBodyScheduleSync())
+    } else {
+        fields = append(fields, jIS.getSlackInfoMessageBodyTeamSync())
+    }
+
     fields = append(fields, &slack.TextBlockObject{
         Type:     slack.MarkdownType,
         Text:     fmt.Sprintf(":alarm_clock: *Next run:* %s", jIS.NextRun().Format(time.RFC822)),
@@ -146,4 +130,31 @@ func (jIS JobInfo) GetSlackInfoMessage() slack.MsgOption {
         return slack.MsgOptionBlocks(headerSection, errorSection, jobSection, divSection)
     }
     return slack.MsgOptionBlocks(headerSection, jobSection, divSection)
+}
+
+func (jIS JobInfo) getSlackInfoMessageBodyTeamSync() *slack.TextBlockObject {
+    return &slack.TextBlockObject{
+    	Type:     slack.MarkdownType,
+    	Text:     fmt.Sprintf("*Member Count:*\nPagerDuty: `%d` / Slack: `%d`", len(jIS.PdObjectMember), len(jIS.SlackGroupObject.Users)),
+    	Emoji:    false,
+    	Verbatim: false,
+    }
+}
+func (jIS JobInfo) getSlackInfoMessageBodyScheduleSync() *slack.TextBlockObject {
+    var uL []string
+    linq.From(jIS.SlackGroupUser).SelectT(func(u slack.User) string {
+        return u.Profile.DisplayNameNormalized
+    }).ToSlice(&uL)
+
+    var sL []string
+    for _, aO := range jIS.PdObjectMember {
+        sL = append(sL, fmt.Sprintf("<%s|%s>", aO.HTMLURL, aO.Summary))
+    }
+
+    return &slack.TextBlockObject{
+        Type:     slack.MarkdownType,
+        Text:     fmt.Sprintf("*Who is on shift:*\n - %s", strings.Join(sL, ",\n -")),
+        Emoji:    false,
+        Verbatim: false,
+    }
 }

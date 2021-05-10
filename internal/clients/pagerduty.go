@@ -70,6 +70,9 @@ func (c *PdClient) PdFilterUserWithoutPhone(ul []pagerduty.User) []pagerduty.Use
 
 // PdListOnCallUsers returns the OnCall users being on shift now
 func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration, bLayer bool) ([]pagerduty.User, []pagerduty.APIObject, error) {
+
+ 
+
     if bLayer == false {
         return c.pdListOnCallUsersFinal(scheduleIDs, sinceOffsetInHours, untilOffsetInHours)
     } else {

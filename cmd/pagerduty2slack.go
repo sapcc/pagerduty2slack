@@ -167,9 +167,7 @@ func main() {
         jI := config.JobInfo{
             Cfg:              cfg,
             JobCounter:       jobCounter,
-            WriteChanges:     cfg.Global.Write,
             JobType:          config.PdScheduleSync,
-            ObjectsToSync:    mj.ObjectsToSync,
         }
         cronEntryID, err := c.AddFunc(mj.CrontabExpressionForRepetition, func() {
             err := cfct.PostMessage(addScheduleOnDutyMembersToGroups(jI).GetSlackInfoMessage())
@@ -186,9 +184,7 @@ func main() {
         jI := config.JobInfo{
             Cfg:              cfg,
             JobCounter:       jobCounter,
-            WriteChanges:     cfg.Global.Write,
             JobType:          config.PdTeamSync,
-            ObjectsToSync:    mj.ObjectsToSync,
         }
         cronEntryID, err := c.AddFunc(mj.CrontabExpressionForRepetition, func() {
             err := cfct.PostMessage(addTeamMembersToGroups(jI).GetSlackInfoMessage())
