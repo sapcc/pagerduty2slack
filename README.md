@@ -13,26 +13,28 @@ Syncs user from PagerDuty Teams and people on shift from Schedules to slack grou
 
 if you're not a cron hero, check <https://crontab.guru/> as example.
 
- ┌───────────── minute (0 - 59)
- │ ┌───────────── hour (0 - 23)
- │ │ ┌───────────── day of the month (1 - 31)
- │ │ │ ┌───────────── month (1 - 12)
- │ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday;
- │ │ │ │ │                                   7 is also Sunday on some systems)
- │ │ │ │ │
- │ │ │ │ │
- \* \* \* \* \* command to execute
+    ┌───────────── minute (0 - 59)  
+    │ ┌───────────── hour (0 - 23)  
+    │ │ ┌───────────── day of the month (1 - 31)  
+    │ │ │ ┌───────────── month (1 - 12)  
+    │ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday;  
+    │ │ │ │ │                                   7 is also Sunday on some systems)  
+    │ │ │ │ │  
+    │ │ │ │ │  
+    \* \* \* \* \* command to execute
+
 jobs:
   pd-schedules-on-duty-to-slack-group:
 
     - crontabExpressionForRepetition: 5 7,8,13,14,19,20 \* \* \*
-      handoverTimeFrameForward: "30min"
-      handoverTimeFrameBackward: "0h"
-      disableSlackHandleTemporaryIfNoneOnShift: true --> optional: default is `false`
-      informUserIfContactPhoneNumberMissing: true --> optional: default is `false`
-      takeTheLayersNotTheFinal: true --> optional: default is `false`
+      syncOptions:
+        disableSlackHandleTemporaryIfNoneOnShift: true --> optional: default is `false`
+        informUserIfContactPhoneNumberMissing: true --> optional: default is `false`
+        handoverTimeFrameForward: "30m" --> schedule selection time frame in the future
+        handoverTimeFrameBackward: "0h" --> schedule selection time frame in the past
+        syncStyle: OverridesOnlyIfThere --> FinalLayer | OverridesOnlyIfThere | AllActiveLayers (default)
       syncObjects:
-        slackGroupHandle: "onduty-api"
+        slackGroupHandle: "onduty-team-no1"
         pdObjectIds:
           - "id from url"
   ...
