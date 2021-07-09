@@ -6,28 +6,39 @@ BINARY  := pagerduty2slack
 LDFLAGS := -X github.com/sapcc/pagerduty2slack/pagerduty2slack.VERSION=$(VERSION)
 GOFLAGS := -ldflags "$(LDFLAGS)"
 
-SRCDIRS  := .
+SRCDIRS  := cmd internal
 PACKAGES := $(shell find $(SRCDIRS) -type d)
 GOFILES  := $(addsuffix /*.go,$(PACKAGES))
 GOFILES  := $(wildcard $(GOFILES))
+#GOBASE := $(shell pwd)
+#GOBASE := /Users/d072896/_git_dev/go
+#GOPATH := $(GOBASE)/pkg/:$(GOBASE)/src/:$(GOBASE)
+GOPROJ := $(shell pwd)
+
+GOBASE := /Users/d072896/_git_dev/go
+GOPATH := $(GOPROJ)/internal/:$(GOPROJ)/internal/clients/:$(GOBASE)/pkg/:$(GOBASE)/src/:$(GOBASE):$(GOROOT)/pkg/:$(GOROOT)/src/
+GOBIN  := $(GOBASE)/bin
+
+#GOPATH := /Users/d072896/_git_dev/go/pkg
+#GOROOT := $(GOBASE)
+#:$(GOBASE)
+#GOBIN := $(GOBASE)/bin
 
 #GLIDE := $(shell command -v glide 2> /dev/null)
 
-.PHONY: all clean vendor tests static-check
 
+.PHONY: all clean vendor tests static-check
 all: test build
 
 build:
-	bin/$(GOOS)/$(BINARY)
-	bin/%/$(BINARY): $(GOFILES) Makefile
-		GOOS=$* GOARCH=amd64 go build $(GOFLAGS) -v -i -o bin/$*/$(BINARY) .
+	env GOOS=$* GOARCH=amd64 go build $(GOFLAGS) -v -i -o bin/$*/$(BINARY) ./cmd
 
-build-easy:
-	env GOOS=linux GOARCH=amd64 go build $(GOFLAGS) -v -i -o bin/$(BINARY) ./cmd
+build-linux:
+	env GOOS=linux GOARCH=amd64 go build $(GOFLAGS) -v -i -o bin/linux/$(BINARY) ./cmd
 
 run:
 	go -o $(BINARY_NAME) -v ./...
-	./$(BINARY_NAME)
+	./$(BINARY_NAME)make co
 
 static-check:
 	@if s="$$(gofmt -s -l *.go pkg 2>/dev/null)"                            && test -n "$$s"; then printf ' => %s\n%s\n' gofmt  "$$s"; false; fi
@@ -48,7 +59,7 @@ clean:
 vendor:
 	dep ensure
 
-FILES = bin/$(BINARY) _run_config.yml
-copy: build-easy
+FILES = bin/linux/$(BINARY) _run_config.yml
+copy: build-linux
 	#scp -i ~/.ssh/id_rsa bin/$(BINARY) ccloud@10.47.41.39:/home/ccloud/ldap2slack/
-	scp -i ~/.ssh/id_rsa $(FILES) ccloud@10.47.41.39:/home/ccloud/pagerduty2slack/
+	scp -i ~/.ssh/id_rsa $(FILES) ccloud@10.47.41.39:/home/ccloud/pagerduty2slack
