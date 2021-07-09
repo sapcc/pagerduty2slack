@@ -1,8 +1,6 @@
 package clients
 
 import (
-    // "encoding/json"
-    "errors"
     "fmt"
     "github.com/PagerDuty/go-pagerduty"
     log "github.com/Sirupsen/logrus"
@@ -23,18 +21,23 @@ var _slackInfoChannelName string
 
 /* #region private methods */
 
-// BotSlackClient provides a Slack Client Instance
-func BotSlackClient() (*slack.Client, error) {
-    if defaultSlackClientBot == nil {
-        return nil, errors.New("SLACK > Could not create Slack BOT Client - check Token / Connection / Weather")
+type SlackClientType int
+const (
+    SlackClientTypeBot SlackClientType = iota
+    SlackClientTypeUser
+)
+// NewSlackClient provides token specific new slack client object
+func NewSlackClient(cfg config.SlackConfig, sct SlackClientType) *slack.Client{
+    var c *slack.Client
+    if sct == SlackClientTypeUser {
+        c = slack.New(cfg.UserSecurityToken, slack.OptionDebug(false))
+    } else {
+        c = slack.New(cfg.BotSecurityToken, slack.OptionDebug(false))
     }
-    return defaultSlackClientBot, nil
-}
-func UserSlackClient() (*slack.Client, error) {
-    if defaultSlackClientUser == nil {
-        return nil, errors.New("SLACK > Could not create Slack User Client - check Token / Connection / Weather")
+    if c == nil {
+        log.Panic("SLACK > Could not create Slack User Client - check Token / Connection / Weather (type: ", sct,")")
     }
-    return defaultSlackClientUser, nil
+    return c
 }
 
 // PostBlocksMessage takes the blocks and sends them to the default info channel
@@ -59,14 +62,8 @@ func PostMessage(msO slack.MsgOption) error {
 
 // Init creates a slack client with given token
 func Init(cfg config.SlackConfig) error {
-    defaultSlackClientBot = slack.New(cfg.BotSecurityToken, slack.OptionDebug(false))
-    if defaultSlackClientBot == nil {
-        return errors.New("SLACK > Could not create Slack BOT Client - check Token / Connection / Weather")
-    }
-    defaultSlackClientUser = slack.New(cfg.UserSecurityToken, slack.OptionDebug(false))
-    if defaultSlackClientUser == nil {
-        return errors.New("SLACK > Could not create Slack User Client - check Token / Connection / Weather")
-    }
+    defaultSlackClientBot = NewSlackClient(cfg, SlackClientTypeBot)
+    defaultSlackClientUser = NewSlackClient(cfg, SlackClientTypeUser)
 
     _slackInfoChannelName = cfg.InfoChannel
 
@@ -249,7 +246,7 @@ func DisableSlackGroup(jI *config.JobInfo) {
 func GetChannels() ([]slack.Channel, error) {
 
     cp := slack.GetConversationsParameters{
-        ExcludeArchived: "true",
+        ExcludeArchived: true,
         Types:           []string{"public_channel", "private_channel"},
         Limit:           1000,
     }

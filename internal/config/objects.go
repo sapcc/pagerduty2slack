@@ -135,7 +135,7 @@ func (jIS JobInfo) GetSlackInfoMessage() slack.MsgOption {
 func (jIS JobInfo) getSlackInfoMessageBodyTeamSync() *slack.TextBlockObject {
     return &slack.TextBlockObject{
     	Type:     slack.MarkdownType,
-    	Text:     fmt.Sprintf("*Member Count:*\nPagerDuty: `%d` / Slack: `%d`", len(jIS.PdObjectMember), len(jIS.SlackGroupObject.Users)),
+    	Text:     fmt.Sprintf("*Member Count:*\n `%d` are in this Slack group", len(jIS.SlackGroupObject.Users)),
     	Emoji:    false,
     	Verbatim: false,
     }

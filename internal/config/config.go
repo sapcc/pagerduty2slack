@@ -63,14 +63,23 @@ type PagerdutyScheduleOnDutyToSlackGroup struct {
     ObjectsToSync SyncObjects `yaml:"syncObjects"`
 }
 
-// SyncOptions Struct
+// ScheduleSyncOptions SyncOptions Struct
 type ScheduleSyncOptions struct {
     HandoverTimeFrameForward string `yaml:"handoverTimeFrameForward"`
     HandoverTimeFrameBackward string `yaml:"handoverTimeFrameBackward"`
     DisableSlackHandleTemporaryIfNoneOnShift bool `yaml:"disableSlackHandleTemporaryIfNoneOnShift"`
     InformUserIfContactPhoneNumberMissing bool `yaml:"informUserIfContactPhoneNumberMissing"`
-    TakeTheLayersNotTheFinal bool `yaml:"takeTheLayersNotTheFinal"`
+    //TakeTheLayersNotTheFinal bool `yaml:"scheduleLayerFinalOnly"`
+    SyncStyle SyncStyle `yaml:"syncStyle"`
 }
+
+// SyncStyle Type of which Layer (or combination) is used
+type SyncStyle string
+const (
+    FinalLayer = "FinalLayer"
+    OverridesOnlyIfThere = "OverridesOnlyIfThere"
+    AllActiveLayers = "AllActiveLayers"
+)
 
 // PagerdutyTeamToSlackGroup Struct
 type PagerdutyTeamToSlackGroup struct {

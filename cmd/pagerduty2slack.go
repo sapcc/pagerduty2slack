@@ -4,7 +4,6 @@ import (
     "flag"
     "fmt"
     log "github.com/Sirupsen/logrus"
-
     "github.com/robfig/cron"
     cfct "github.com/sapcc/pagerduty2slack/internal/clients"
     "github.com/sapcc/pagerduty2slack/internal/config"
@@ -54,7 +53,7 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) config.JobInfo {
        jI.Error = fmt.Errorf(eS)
     }
 
-    pdUsers, pdSchedules, err := pdC.PdListOnCallUsers(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].ObjectsToSync.PagerdutyObjectId, tfF, tfB, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.TakeTheLayersNotTheFinal)
+    pdUsers, pdSchedules, err := pdC.PdListOnCallUsers(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].ObjectsToSync.PagerdutyObjectId, tfF, tfB, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.SyncStyle)
     jI.PdObjects = pdSchedules
     jI.PdObjectMember = pdUsers
     if err != nil {
@@ -197,6 +196,8 @@ func main() {
         jI.Error = err
     }
 
+    //b, _ := cfct.NewEventBot()
+    //go b.StartListening()
     go c.Start()
     defer c.Stop()
 
@@ -217,6 +218,7 @@ func main() {
         sig := make(chan os.Signal)
         signal.Notify(sig, os.Interrupt, os.Kill)
         <-sig
-
+    } else {
+        log.Info("cfg.Global.RunAtStart is set to: ",cfg.Global.RunAtStart)
     }
 }

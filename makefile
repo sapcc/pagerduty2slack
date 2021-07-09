@@ -62,4 +62,4 @@ vendor:
 FILES = bin/linux/$(BINARY) _run_config.yml
 copy: build-linux
 	#scp -i ~/.ssh/id_rsa bin/$(BINARY) ccloud@10.47.41.39:/home/ccloud/ldap2slack/
-	scp -i ~/.ssh/id_rsa $(FILES) ccloud@10.47.41.39:/home/ccloud/pagerduty2slack_new/
+	scp -i ~/.ssh/id_rsa $(FILES) ccloud@10.47.41.39:/home/ccloud/pagerduty2slack

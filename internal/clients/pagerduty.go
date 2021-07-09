@@ -2,6 +2,7 @@ package clients
 
 import (
     "fmt"
+    log "github.com/Sirupsen/logrus"
     "github.com/ahmetb/go-linq"
     "github.com/sapcc/pulsar/pkg/util"
     "time"
@@ -69,17 +70,15 @@ func (c *PdClient) PdFilterUserWithoutPhone(ul []pagerduty.User) []pagerduty.Use
 
 
 // PdListOnCallUsers returns the OnCall users being on shift now
-func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration, bLayer bool) ([]pagerduty.User, []pagerduty.APIObject, error) {
-
- 
-
-    if bLayer == false {
-        return c.pdListOnCallUsersFinal(scheduleIDs, sinceOffsetInHours, untilOffsetInHours)
+func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration, layerSyncStyle config.SyncStyle) ([]pagerduty.User, []pagerduty.APIObject, error) {
+    if layerSyncStyle == config.FinalLayer {
+        return c.pdListOnCallUseFinal(scheduleIDs, sinceOffsetInHours, untilOffsetInHours)
     } else {
-        return c.pdListOnCallUsersLayers(scheduleIDs, sinceOffsetInHours, untilOffsetInHours)
+        return c.pdListOnCallUseLayers(scheduleIDs, sinceOffsetInHours, untilOffsetInHours, layerSyncStyle)
     }
 }
-func (c *PdClient) pdListOnCallUsersFinal (scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration ) ([]pagerduty.User, []pagerduty.APIObject, error) {
+
+func (c *PdClient) pdListOnCallUseFinal (scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration ) ([]pagerduty.User, []pagerduty.APIObject, error) {
 
     lo := pagerduty.ListOnCallOptions{
         ScheduleIDs: scheduleIDs,
@@ -106,9 +105,9 @@ func (c *PdClient) pdListOnCallUsersFinal (scheduleIDs []string, sinceOffsetInHo
         u, err := c.pagerdutyClient.GetUser(oC.User.ID, o)
 
         if err != nil {
-            sl = append(sl, oC.User)
+            sl = append(sl, oC.User.APIObject)
             return pagerduty.User{
-                APIObject:         oC.User,
+                APIObject:         oC.User.APIObject,
                 Name:              oC.User.Summary,
             }
         }
@@ -118,95 +117,85 @@ func (c *PdClient) pdListOnCallUsersFinal (scheduleIDs []string, sinceOffsetInHo
     return ul, sl, nil
 }
 
-func (c *PdClient) pdListOnCallUsersLayers (scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration ) ([]pagerduty.User, []pagerduty.APIObject, error) {
-     // distinct list of schedule metadata
-    var sl []pagerduty.APIObject
-
-
-    lo := pagerduty.GetScheduleOptions{
-       TimeZone: "UTC",
-       Since: util.TimestampToString(time.Now().Add(-sinceOffsetInHours)),
-       Until: util.TimestampToString(time.Now().Add(untilOffsetInHours)),
-    }
-
-    /*
-    lo := pagerduty.GetScheduleOptions{
-        TimeZone: "UTC",
-        Since: "2021-03-03 13:00:00",
-        Until: "2021-03-03 14:00:00",
-    }*/
+func (c *PdClient) pdListOnCallUseLayers (scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration, layerSyncStyle config.SyncStyle) ([]pagerduty.User, []pagerduty.APIObject, error) {
     defer func() {
         if r := recover(); r != nil {
-            fmt.Sprintf("PROGRAMMER FAIL > %s", r.(error))
+            log.Errorf("PROGRAMMER FAIL > %s", r.(error))
         }
     }()
 
+    // distinct list of schedule metadata
+    var sl []pagerduty.APIObject
     var ul []pagerduty.User
+
+    // query options for schedule and override request (we needed since the api doesn't deliver the override info, beside api docu said it should)
+    lo := pagerduty.GetScheduleOptions{
+        TimeZone: "UTC",
+        Since:    util.TimestampToString(time.Now().UTC().Add(-sinceOffsetInHours)),
+        Until:    util.TimestampToString(time.Now().UTC().Add(untilOffsetInHours)),
+    }
+    loO:= pagerduty.ListOverridesOptions{
+        Since:    util.TimestampToString(time.Now().UTC().Add(-sinceOffsetInHours)),
+        Until:    util.TimestampToString(time.Now().UTC().Add(untilOffsetInHours)),
+    }
+
+    // get schedule objects
     for _, schedule := range scheduleIDs {
         var tul []pagerduty.User
         scheduleO, err := c.pagerdutyClient.GetSchedule(schedule, lo)
-        if err != nil{
-            sl = append(sl, pagerduty.APIObject{
-                ID:      schedule,
-                Type:    "",
-                Summary: schedule,
-                Self:    "",
-                HTMLURL: "",
-            })
-        }
-        if err != nil {
+        if scheduleO == nil || err != nil {
             return nil, sl, err
         }
+
         sl = append(sl, scheduleO.APIObject)
 
+        // get overrides (since we can't trust the info in schedule object, we have to request separately until API is fixed
+        ors, _ := c.pagerdutyClient.ListOverrides(schedule, loO)
+        if ors != nil {
+            // add override layer if exist
+            if len(ors.Overrides) > 0 {
+                linq.From(ors.Overrides).SelectT(func(o pagerduty.Override) pagerduty.User {
+                   return c.getUser(o.User)
+                }).ToSlice(&tul)
+                log.Debug(ors)
+                ul = append(ul, tul...)
+                // if exist and we do not need the other layers - jump to next schedule
+                if layerSyncStyle == config.OverridesOnlyIfThere {
+                    continue
+                }
+            }
+        } else { log.Info("No Overrides for ", scheduleO) }
+
         if len(scheduleO.ScheduleLayers) > 0 {
+
             // add rendered layers
             linq.From(scheduleO.ScheduleLayers).SelectManyByT(
-                func (sL pagerduty.ScheduleLayer) linq.Query { return linq.From(sL.RenderedScheduleEntries) },
-                func (rse pagerduty.RenderedScheduleEntry, sL pagerduty.ScheduleLayer) pagerduty.User {
-                    o := pagerduty.GetUserOptions{
-                    Includes: []string{"contact_methods"},
-                    }
-                    u, err := c.pagerdutyClient.GetUser(rse.User.ID, o)
-                    if err != nil {
-                        return pagerduty.User{
-                            APIObject: rse.User,
-                            Name:      rse.User.Summary,
-                        }
-                    }
-                    return *u
+                func(sL pagerduty.ScheduleLayer) linq.Query { return linq.From(sL.RenderedScheduleEntries) },
+                func(rse pagerduty.RenderedScheduleEntry, sL pagerduty.ScheduleLayer) pagerduty.User {
+                    return c.getUser(rse.User)
                 },
             ).ToSlice(&tul)
-
             ul = append(ul, tul...)
-
-            // also add overrides
-            if len(scheduleO.OverrideSubschedule.RenderedScheduleEntries) > 0 {
-
-                linq.From(scheduleO.OverrideSubschedule).SelectManyByT(
-                    func (sL pagerduty.ScheduleLayer) linq.Query { return linq.From(sL.RenderedScheduleEntries) },
-                    func (rse pagerduty.RenderedScheduleEntry, sL pagerduty.ScheduleLayer) pagerduty.User {
-                        o := pagerduty.GetUserOptions{
-                            Includes: []string{"contact_methods"},
-                        }
-                        u, err := c.pagerdutyClient.GetUser(rse.User.ID, o)
-                        if err != nil {
-                            return pagerduty.User{
-                                APIObject:         rse.User,
-                                Name:              rse.User.Summary,
-                            }
-                        }
-                        return *u
-                    },
-                ).ToSlice(&tul)
-
-                ul = append(ul, tul...)
-            }
         }
     }
+
     linq.From(ul).DistinctByT(func (u pagerduty.User) string {return u.ID}).ToSlice(&ul)
 
     return ul, sl, nil
+}
+
+func (c *PdClient) getUser(user pagerduty.APIObject) pagerduty.User {
+    o := pagerduty.GetUserOptions{
+        Includes: []string{"contact_methods"},
+    }
+    u, err := c.pagerdutyClient.GetUser(user.ID, o)
+    if err != nil {
+        return pagerduty.User{
+            APIObject: user,
+            Name:      user.Summary,
+        }
+    }
+    return *u
 }
 
 // PdGetTeamMembers returns a pagerduty schedule for the given name or an error.

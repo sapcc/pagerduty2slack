@@ -1,11 +1,11 @@
-FROM golang:1.11.0-alpine3.8 as builder
+FROM golang:1.16.5-alpine3.14 as builder
 WORKDIR /go/src/github.com/sapcc/pagerduty2slack
 RUN apk add --no-cache make
 COPY . .
 ARG VERSION
 RUN make all
 
-FROM alpine:3.8
+FROM alpine:3.14
 LABEL maintainer="Tilo Geissler <tilo.geissler@@sap.com>"
 
 RUN apk add --no-cache curl
