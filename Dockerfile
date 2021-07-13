@@ -1,17 +1,17 @@
 FROM golang:1.16.5-alpine3.14 as builder
-WORKDIR /go/src/github.com/sapcc/pagerduty2slack
-RUN apk add --no-cache make
+WORKDIR $GOPATH/src/github.com/sapcc/pagerduty2slack
+RUN apk add --no-cache make git
 COPY . .
 ARG VERSION
-RUN make all
+RUN go mod download
+RUN go build -o ./bin/pagerduty2slack ./cmd/pagerduty2slack.go
+RUN make build
+#RUN ls -lisa ./bin
 
 FROM alpine:3.14
 LABEL maintainer="Tilo Geissler <tilo.geissler@@sap.com>"
+LABEL source_repository="https://github.com/sapcc/pagerduty2slack"
 
 RUN apk add --no-cache curl
-RUN curl -Lo /bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.0/dumb-init_1.2.0_amd64 \
-	&& chmod +x /bin/dumb-init \
-	&& dumb-init -V
-COPY --from=builder /go/src/github.com/sapcc/pagerduty2slack/bin/linux/* /usr/local/bin/
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["pagerduty2slack"]
+COPY --from=builder /go/src/github.com/sapcc/pagerduty2slack/bin/pagerduty2slack /usr/local/bin/
+CMD ["pagerduty2slack","-config","/etc/config/_run_config.yaml"]

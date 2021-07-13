@@ -3,9 +3,9 @@ package clients
 import (
     "fmt"
     "github.com/PagerDuty/go-pagerduty"
-    log "github.com/Sirupsen/logrus"
     "github.com/ahmetb/go-linq"
     "github.com/sapcc/pagerduty2slack/internal/config"
+    log "github.com/sirupsen/logrus"
     "github.com/slack-go/slack"
     "strings"
     "sync"

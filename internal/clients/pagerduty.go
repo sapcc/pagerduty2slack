@@ -2,9 +2,9 @@ package clients
 
 import (
     "fmt"
-    log "github.com/Sirupsen/logrus"
     "github.com/ahmetb/go-linq"
     "github.com/sapcc/pulsar/pkg/util"
+    log "github.com/sirupsen/logrus"
     "time"
 
     "github.com/PagerDuty/go-pagerduty"

@@ -7,7 +7,7 @@ import (
 
     "github.com/PagerDuty/go-pagerduty"
     "github.com/ahmetb/go-linq"
-    "github.com/robfig/cron"
+    "github.com/robfig/cron/v3"
     "github.com/slack-go/slack"
 )
 
@@ -19,19 +19,19 @@ const (
 )
 
 type JobInfo struct {
-    Error                       error
-    Cfg                         Config
-    JobCounter                  int
-    JobRunComment               string
-    PdObjects                   []pagerduty.APIObject
-    PdObjectMember              []pagerduty.User
-    PdObjectMemberWithoutContact []pagerduty.User
-    PdObjectMemberWithoutSlack   []pagerduty.User
-    SlackGroupObject slack.UserGroup
-    SlackGroupUser   []slack.User
-    JobType          ObjectSyncType
-    CronJobId        cron.EntryID
-    CronObject       *cron.Cron
+    Error                        error                 `json:"error,omitempty"`
+    Cfg                          Config                `json:"cfg"`
+    JobCounter                   int                   `json:"job_counter,omitempty"`
+    JobRunComment                string                `json:"job_run_comment,omitempty"`
+    PdObjects                    []pagerduty.APIObject `json:"pd_objects,omitempty"`
+    PdObjectMember               []pagerduty.User      `json:"pd_object_member,omitempty"`
+    PdObjectMemberWithoutContact []pagerduty.User      `json:"pd_object_member_without_contact,omitempty"`
+    PdObjectMemberWithoutSlack   []pagerduty.User      `json:"pd_object_member_without_slack,omitempty"`
+    SlackGroupObject             slack.UserGroup       `json:"slack_group_object"`
+    SlackGroupUser               []slack.User          `json:"slack_group_user,omitempty"`
+    JobType                      ObjectSyncType        `json:"job_type,omitempty"`
+    CronJobId                    cron.EntryID          `json:"cron_job_id,omitempty"`
+    CronObject                   *cron.Cron            `json:"cron_object,omitempty"`
 }
 
 

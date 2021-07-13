@@ -3,10 +3,10 @@ package main
 import (
     "flag"
     "fmt"
-    log "github.com/Sirupsen/logrus"
-    "github.com/robfig/cron"
+    "github.com/robfig/cron/v3"
     cfct "github.com/sapcc/pagerduty2slack/internal/clients"
     "github.com/sapcc/pagerduty2slack/internal/config"
+    log "github.com/sirupsen/logrus"
 
     "os"
     "os/signal"
