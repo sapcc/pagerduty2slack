@@ -1,0 +1,59 @@
+[
+    {
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": "This is a mrkdwn section block :ghost: *this is bold*, and ~this is crossed out~, and <https://google.com|this is a link>"
+        }
+    },
+    {
+        "type": "divider"
+    },
+    {
+        "type": "section",
+        "fields": [
+            {
+            "type": "plain_text",
+            "text": "*this is plain_text text*",
+            "emoji": true
+            },
+            {
+            "type": "plain_text",
+            "text": "*this is plain_text text*",
+            "emoji": true
+            },
+            {
+            "type": "plain_text",
+            "text": "*this is plain_text text*",
+            "emoji": true
+            },
+            {
+            "type": "plain_text",
+            "text": "*this is plain_text text*",
+            "emoji": true
+            },
+            {
+            "type": "plain_text",
+            "text": "*this is plain_text text*",
+            "emoji": true
+            }
+        ]
+    },
+    {
+        "type": "section",
+        "text": {
+        "type": "mrkdwn",
+        "text": "This is a section block with a button."
+        },
+        "accessory": {
+            "type": "button",
+            "text": {
+            "type": "plain_text",
+            "text": "Click Me",
+            "emoji": true
+        },
+            "value": "click_me_123",
+            "action_id": "button-action"
+        }
+    }
+]

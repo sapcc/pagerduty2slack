@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pagerduty2slack-config
+  namespace: slack-user-sync
+
+data:
+  _run_config.yaml: |
+    global:
+      #  true | false
+      write: false
+      # "panic"|"fatal"|"error"|"warn"|"info"|"debug"|"trace"
+      logLevel: "info"
+      runAtStart: true
+
+    slack:
+      securityTokenBot: "xoxb-7427940677-1520683771751-rNdaB1n1BEkQ6KjGOMBKVWWw" #pd2slack bot
+      securityTokenUser: "xoxp-7427940677-436608613075-1550869536833-5f2b0a43c95fab538d2b6749a988a89c" #pd2slack user
+      infoChannel: "cc-user-sync-notifications" #https://hooks.slack.com/services/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
+      workspaceForChatLinks: "convergedcloud"
+
+    pagerduty:
+      authToken: y-LQXyh1yKQNpuWzrw2n
+      apiUser: cc-tec@bar.com
+
+
+    # ┌───────────── minute (0 - 59)
+    # │ ┌───────────── hour (0 - 23)
+    # │ │ ┌───────────── day of the month (1 - 31)
+    # │ │ │ ┌───────────── month (1 - 12)
+    # │ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday;
+    # │ │ │ │ │                                   7 is also Sunday on some systems)
+    # │ │ │ │ │
+    # │ │ │ │ │
+    # * * * * * command to execute
+    jobs:
+      pd-schedules-on-duty-to-slack-group:
+        # b1
+        - crontabExpressionForRepetition: 5 7,8,13,14,19,20 * * *
+          syncOptions:
+            disableSlackHandleTemporaryIfNoneOnShift: true
+            informUserIfContactPhoneNumberMissing: true
+            handoverTimeFrameForward: "30m"
+            handoverTimeFrameBackward: "0h"
+            syncStyle: OverridesOnlyIfThere
+          syncObjects:
+            slackGroupHandle: "onduty-api"
+            pdObjectIds:
+              - "POKBBAC"
+        # vmware
+        - crontabExpressionForRepetition: 5 0,1,2,7,8,9,15,16,17,18 * * *
+          #slackGroupHandle: "ccloud-infraops"
+          syncOptions:
+            handoverTimeFrameForward: "30m"
+            handoverTimeFrameBackward: "0h"
+            syncStyle: OverridesOnlyIfThere
+          syncObjects:
+            slackGroupHandle: "onduty-vmware"
+            pdObjectIds:
+              - "P8K8FWD"
+        # net
+        - crontabExpressionForRepetition: 1 * * * *
+          syncOptions:
+            handoverTimeFrameForward: "1h"
+            handoverTimeFrameBackward: "1h"
+            syncStyle: OverridesOnlyIfThere
+          syncObjects:
+            slackGroupHandle: "onduty-net"
+            pdObjectIds:
+              - "P625LPV"
+        # moops
+        - crontabExpressionForRepetition: 1 8 * * *
+          syncOptions:
+            handoverTimeFrameForward: "1h"
+            handoverTimeFrameBackward: "1h"
+            syncStyle: OverridesOnlyIfThere
+          syncObjects:
+            slackGroupHandle: "onduty-dev"
+            pdObjectIds:
+              - "PNUU6MS"
+        # metal
+        - crontabExpressionForRepetition: 1 * * * *
+          syncOptions:
+            handoverTimeFrameForward: "1h"
+            handoverTimeFrameBackward: "1h"
+            syncStyle: OverridesOnlyIfThere
+          syncObjects:
+            slackGroupHandle: "onduty-metal"
+            pdObjectIds:
+              - "PT5HGLT"
+              - "P7EXQAK"
+
+      pd-teams-to-slack-group:
+        # B1
+        - crontabExpressionForRepetition: 0 9 * * 1-5
+          checkOnExistingPhoneNumber: true
+          syncObjects:
+            slackGroupHandle: team_pd_api
+            pdObjectIds:
+              - "P738BNU"
+        - crontabExpressionForRepetition: 0 9 * * 1-5
+          syncObjects:
+            slackGroupHandle: b1cc
+            pdObjectIds:
+              - "P738BNU"
+        # metal
+        - crontabExpressionForRepetition: 0 9 * * 1-5
+          syncObjects:
+            slackGroupHandle: team_pd_metal
+            pdObjectIds:
+              - "P3TKAY4"
+        # vmware
+        - crontabExpressionForRepetition: 0 9 * * 1-5
+          syncObjects:
+            slackGroupHandle: team_pd_compute
+            pdObjectIds:
+             - "PIDIA5L"
+        # net l4
+        - crontabExpressionForRepetition: 0 9 * * 1-5
+          syncObjects:
+            slackGroupHandle: team_pd_network
+            pdObjectIds:
+              - "PKRR2RD"

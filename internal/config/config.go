@@ -43,6 +43,7 @@ type SlackConfig struct {
     // Token to authenticate
     BotSecurityToken string `yaml:"securityTokenBot"`
     UserSecurityToken string `yaml:"securityTokenUser"`
+    SocketSecurityToken string `yaml:"securityTokenSocket"`
     InfoChannel string `yaml:"infoChannel"`
     Workspace string `yaml:"workspaceForChatLinks"`
 }

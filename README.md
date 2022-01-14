@@ -23,26 +23,34 @@ if you're not a cron hero, check <https://crontab.guru/> as example.
     │ │ │ │ │  
     \* \* \* \* \* command to execute
 
-jobs:
-  pd-schedules-on-duty-to-slack-group:
+    jobs:
+      pd-schedules-on-duty-to-slack-group:
+    
+        - crontabExpressionForRepetition: 5 7,8,13,14,19,20 \* \* \*
+          syncOptions:
+            disableSlackHandleTemporaryIfNoneOnShift: true --> optional: default is `false`
+            informUserIfContactPhoneNumberMissing: true --> optional: default is `false`
+            handoverTimeFrameForward: "30m" --> schedule selection time frame in the future
+            handoverTimeFrameBackward: "0h" --> schedule selection time frame in the past
+            syncStyle: OverridesOnlyIfThere --> FinalLayer | OverridesOnlyIfThere | AllActiveLayers (default)
+          syncObjects:
+            slackGroupHandle: "onduty-team-no1"
+            pdObjectIds:
+              - "id from url"
+      ...
+      pd-teams-to-slack-group:
+    
+        - crontabExpressionForRepetition: 0 9-20/2 \* \* 1-5
+          checkOnExistingPhoneNumber: true
+          syncObjects:
+            slackGroupHandle: team_pd_api
+            pdObjectIds:
+              - "id from url"
+    
 
-    - crontabExpressionForRepetition: 5 7,8,13,14,19,20 \* \* \*
-      syncOptions:
-        disableSlackHandleTemporaryIfNoneOnShift: true --> optional: default is `false`
-        informUserIfContactPhoneNumberMissing: true --> optional: default is `false`
-        handoverTimeFrameForward: "30m" --> schedule selection time frame in the future
-        handoverTimeFrameBackward: "0h" --> schedule selection time frame in the past
-        syncStyle: OverridesOnlyIfThere --> FinalLayer | OverridesOnlyIfThere | AllActiveLayers (default)
-      syncObjects:
-        slackGroupHandle: "onduty-team-no1"
-        pdObjectIds:
-          - "id from url"
-  ...
-  pd-teams-to-slack-group:
+syncStyle:
+| FinalLayer | 
+| OverridesOnlyIfThere | 
+| AllActiveLayers (default)
 
-    - crontabExpressionForRepetition: 0 9-20/2 \* \* 1-5
-      checkOnExistingPhoneNumber: true
-      syncObjects:
-        slackGroupHandle: team_pd_api
-        pdObjectIds:
-          - "id from url"
+disableSlackHandleTemporaryIfNoneOnShift

@@ -13,6 +13,7 @@ import (
 
 var defaultSlackClientBot *slack.Client
 var defaultSlackClientUser *slack.Client
+var defaultSlackClientSocket *slack.Client
 var slackChannels []slack.Channel
 var slackUserList []slack.User
 var slackGrps []slack.UserGroup
@@ -25,15 +26,24 @@ type SlackClientType int
 const (
     SlackClientTypeBot SlackClientType = iota
     SlackClientTypeUser
+    SlackClientTypeSocket
 )
 // NewSlackClient provides token specific new slack client object
 func NewSlackClient(cfg config.SlackConfig, sct SlackClientType) *slack.Client{
     var c *slack.Client
-    if sct == SlackClientTypeUser {
-        c = slack.New(cfg.UserSecurityToken, slack.OptionDebug(false))
-    } else {
-        c = slack.New(cfg.BotSecurityToken, slack.OptionDebug(false))
+
+    switch sct {
+        case SlackClientTypeUser:
+            c = slack.New(cfg.UserSecurityToken, slack.OptionDebug(false))
+        case SlackClientTypeBot:
+            c = slack.New(cfg.BotSecurityToken, slack.OptionDebug(false))
+        case SlackClientTypeSocket:
+            c = slack.New(cfg.BotSecurityToken,
+                            slack.OptionAppLevelToken(cfg.SocketSecurityToken),
+                            slack.OptionDebug(false),
+            )
     }
+
     if c == nil {
         log.Panic("SLACK > Could not create Slack User Client - check Token / Connection / Weather (type: ", sct,")")
     }
@@ -64,6 +74,7 @@ func PostMessage(msO slack.MsgOption) error {
 func Init(cfg config.SlackConfig) error {
     defaultSlackClientBot = NewSlackClient(cfg, SlackClientTypeBot)
     defaultSlackClientUser = NewSlackClient(cfg, SlackClientTypeUser)
+    defaultSlackClientSocket = NewSlackClient(cfg, SlackClientTypeSocket)
 
     _slackInfoChannelName = cfg.InfoChannel
 

@@ -7,10 +7,8 @@ import (
     cfct "github.com/sapcc/pagerduty2slack/internal/clients"
     "github.com/sapcc/pagerduty2slack/internal/config"
     log "github.com/sirupsen/logrus"
-
     "os"
     "os/signal"
-
     "time"
 )
 
@@ -153,13 +151,14 @@ func main() {
     level, _ := log.ParseLevel(cfg.Global.LogLevel)
     log.SetLevel(level)
 
-
     loc, err := time.LoadLocation("UTC")
     c := cron.New(cron.WithLocation(loc))
 
     _, err = c.AddFunc("0 * * * *", func() {
         cfct.LoadSlackMasterData()
     })
+
+    var jobs []config.JobInfo
 
     //member sync jobs
     for jobCounter, mj := range cfg.Jobs.ScheduleSync {
@@ -177,6 +176,8 @@ func main() {
         jI.CronJobId = cronEntryID
         jI.CronObject = c
         jI.Error = err
+
+        jobs = append(jobs, jI)
     }
     //group sync jobs
     for jobCounter, mj := range cfg.Jobs.TeamSync {
@@ -194,10 +195,20 @@ func main() {
         jI.CronJobId = cronEntryID
         jI.CronObject = c
         jI.Error = err
+
+        jobs = append(jobs, jI)
     }
 
-    //b, _ := cfct.NewEventBot()
-    //go b.StartListening()
+    //-----------------------
+    b, err := cfct.NewEventBot(&jobs)
+    if err != nil {
+        log.Error(err)
+    } else {
+        go b.StartListening()
+        log.Info("Listener bot started.")
+    }
+    //-----------------------
+
     go c.Start()
     defer c.Stop()
 
@@ -214,11 +225,11 @@ func main() {
         }
         log.Info(m)
         //informSlack(&cfg, m, "JobList")
-
-        sig := make(chan os.Signal)
-        signal.Notify(sig, os.Interrupt, os.Kill)
-        <-sig
     } else {
         log.Info("cfg.Global.RunAtStart is set to: ",cfg.Global.RunAtStart)
     }
+
+    sig := make(chan os.Signal)
+    signal.Notify(sig, os.Interrupt, os.Kill)
+    <-sig
 }

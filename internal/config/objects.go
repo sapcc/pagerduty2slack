@@ -134,12 +134,13 @@ func (jIS JobInfo) GetSlackInfoMessage() slack.MsgOption {
 
 func (jIS JobInfo) getSlackInfoMessageBodyTeamSync() *slack.TextBlockObject {
     return &slack.TextBlockObject{
-    	Type:     slack.MarkdownType,
-    	Text:     fmt.Sprintf("*Member Count:*\n `%d` are in this Slack group", len(jIS.SlackGroupObject.Users)),
-    	Emoji:    false,
-    	Verbatim: false,
+        Type:     slack.MarkdownType,
+        Text:     fmt.Sprintf("*Member Count:*\n `%d` are in this Slack group", len(jIS.SlackGroupObject.Users)),
+        Emoji:    false,
+        Verbatim: false,
     }
 }
+
 func (jIS JobInfo) getSlackInfoMessageBodyScheduleSync() *slack.TextBlockObject {
     var uL []string
     linq.From(jIS.SlackGroupUser).SelectT(func(u slack.User) string {
@@ -153,7 +154,7 @@ func (jIS JobInfo) getSlackInfoMessageBodyScheduleSync() *slack.TextBlockObject 
 
     return &slack.TextBlockObject{
         Type:     slack.MarkdownType,
-        Text:     fmt.Sprintf("*Who is on shift:*\n - %s", strings.Join(sL, ",\n -")),
+        Text:     fmt.Sprintf("*Who is on shift:*\n - %s", strings.Join(sL, ",\n - ")),
         Emoji:    false,
         Verbatim: false,
     }

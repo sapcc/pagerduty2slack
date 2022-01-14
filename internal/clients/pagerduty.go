@@ -159,7 +159,7 @@ func (c *PdClient) pdListOnCallUseLayers (scheduleIDs []string, sinceOffsetInHou
                 }).ToSlice(&tul)
                 log.Debug(ors)
                 ul = append(ul, tul...)
-                // if exist and we do not need the other layers - jump to next schedule
+                // if exist and we do not need the other layers - jump to next schedule and skip the standard layers
                 if layerSyncStyle == config.OverridesOnlyIfThere {
                     continue
                 }
