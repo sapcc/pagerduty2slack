@@ -7,6 +7,7 @@ import (
 
 	"github.com/PagerDuty/go-pagerduty"
 	"github.com/ahmetb/go-linq"
+	"github.com/pkg/errors"
 	"github.com/sapcc/pagerduty2slack/internal/config"
 	log "github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
@@ -30,12 +31,14 @@ const (
 )
 
 // NewSlackClient provides token specific new slack client object
-func NewSlackClient(cfg config.SlackConfig, sct SlackClientType) *slack.Client {
+func NewSlackClient(cfg config.SlackConfig, sct SlackClientType, options ...slack.Option) *slack.Client {
 	var c *slack.Client
+	options = append(options, slack.OptionDebug(false))
+
 	if sct == SlackClientTypeUser {
-		c = slack.New(cfg.UserSecurityToken, slack.OptionDebug(false))
+		c = slack.New(cfg.UserSecurityToken, options...)
 	} else {
-		c = slack.New(cfg.BotSecurityToken, slack.OptionDebug(false))
+		c = slack.New(cfg.BotSecurityToken, options...)
 	}
 	if c == nil {
 		log.Panic("SLACK > Could not create Slack User Client - check Token / Connection / Weather (type: ", sct, ")")
@@ -50,13 +53,10 @@ func PostBlocksMessage(blocks ...slack.Block) error {
 }
 func PostMessage(msO slack.MsgOption) error {
 
-	_, _, err := defaultSlackClientBot.PostMessage(slackInfoChannel.ID, msO)
-
-	if err != nil {
+	if _, _, err := defaultSlackClientBot.PostMessage(slackInfoChannel.ID, msO); err != nil {
 		return err
 	}
 
-	//log.Debug(string(b))
 	log.Debug("Message successfully sent to channel ", slackInfoChannel.Name)
 	return nil
 }
@@ -70,13 +70,11 @@ func Init(cfg config.SlackConfig) error {
 
 	_slackInfoChannelName = cfg.InfoChannel
 
-	LoadSlackMasterData()
-	return nil
+	return LoadSlackMasterData()
 }
 
 //LoadSlackMasterData singleton master data to speed up
-func LoadSlackMasterData() {
-	var err error
+func LoadSlackMasterData() (err error) {
 
 	log.Debug("loadSlackMasterData running ...")
 
@@ -84,19 +82,13 @@ func LoadSlackMasterData() {
 
 	slackUserListTemp, err := defaultSlackClientBot.GetUsers()
 	if err != nil {
-		log.Panic(err)
-		//return _, fmt.Errorf(fmt.Sprintf("SLACK > %s", err))
+		return errors.Wrap(err, "get users failed")
 	}
 
 	slackGrpsTemp, err := defaultSlackClientBot.GetUserGroups(slack.GetUserGroupsOptionIncludeUsers(true))
 	if err != nil {
-		log.Panic(err)
-		//return _, fmt.Errorf(fmt.Sprintf("SLACK > %s", err))
+		return errors.Wrap(err, "get user groups failed")
 	}
-
-	//if err != nil {
-	//    log.Panic(err)
-	//}
 
 	var mutex = &sync.Mutex{}
 	mutex.Lock()
@@ -105,13 +97,14 @@ func LoadSlackMasterData() {
 	slackGrps = slackGrpsTemp
 	mutex.Unlock()
 
-	//if slackInfoChannel {
-	slackInfoChannel = linq.From(slackChannels).WhereT(func(channel slack.Channel) bool {
-		return strings.Compare(channel.GroupConversation.Name, _slackInfoChannelName) == 0
-	}).First().(slack.Channel)
-	//}
-
-	log.Debug("loadSlackMasterData updated.")
+	for _, c := range slackChannels {
+		if c.GroupConversation.Name == _slackInfoChannelName {
+			slackInfoChannel = c
+			log.Debug("loadSlackMasterData updated.")
+			return
+		}
+	}
+	return fmt.Errorf("masterdata is missing channel %s", _slackInfoChannelName)
 }
 
 // GetSlackGroup requests existing Group for given name
@@ -183,7 +176,7 @@ func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User) bool {
 
 	if len(slackUser) == 0 {
 		err := fmt.Errorf("user list was empty; no update done")
-		log.Error("SLACK > %s :: %s", jI.SlackHandleId(), err)
+		log.Errorf("SLACK > %s :: %s", jI.SlackHandleId(), err)
 		jI.Error = err
 	}
 
@@ -197,7 +190,7 @@ func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User) bool {
 
 	if len(slackUser) == len(jI.SlackGroupObject.Users) {
 		for _, user := range slackUser {
-			if !linq.From(jI.SlackGroupObject.Users).Contains(user) {
+			if !linq.From(jI.SlackGroupObject.Users).Contains(user.ID) {
 				bNoChange = false
 				continue
 			}
@@ -256,7 +249,7 @@ func GetChannels() ([]slack.Channel, error) {
 
 	channels, _, err := defaultSlackClientBot.GetConversations(&cp)
 	if err != nil {
-		log.Error("SLACK", ">", err)
+		return nil, errors.Wrap(err, "get channels failed")
 	}
-	return channels, err
+	return channels, nil
 }
