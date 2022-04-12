@@ -59,11 +59,11 @@ func (c *PdClient) PdGetUserByEmail(email string) (*pagerduty.User, error) {
 // PdFilterUserWithoutPhone gives all User without a phone number set
 func (c *PdClient) PdFilterUserWithoutPhone(ul []pagerduty.User) []pagerduty.User {
 	var ulf []pagerduty.User
-	linq.From(ulf).WhereT(func(u pagerduty.User) bool {
+	linq.From(ul).WhereT(func(u pagerduty.User) bool {
 
 		return linq.From(u.ContactMethods).SelectT(func(c pagerduty.ContactMethod) string {
 			return c.Type
-		}).Contains("phone_contact_method_reference")
+		}).Contains("phone_contact_method_reference") == false
 
 	}).ToSlice(&ulf)
 	return ulf
