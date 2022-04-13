@@ -234,7 +234,7 @@ func DisableSlackGroup(jI *config.JobInfo) {
 		log.Error("SLACK", "> SLACK error: ", err)
 		jI.Error = err
 	} else {
-		log.Println("SLACK> group disabled!", userGroup)
+		log.Infof("SLACK> group `%s` disabled!", userGroup.Name)
 	}
 }
 

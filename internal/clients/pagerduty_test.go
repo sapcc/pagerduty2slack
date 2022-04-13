@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PagerDuty/go-pagerduty"
 	"github.com/sapcc/pagerduty2slack/internal/config"
@@ -42,25 +43,25 @@ func TestFilterUserWithoutPhone(t *testing.T) {
 	testcases := []filterPhoneTestcase{
 		filterPhoneTestcase{
 			users: []pagerduty.User{
-				createPDUser("one", "1", true, true),
-				createPDUser("two", "2", true, false),
-				createPDUser("three", "3", true, true),
+				createMockUser("one", "1", true, true),
+				createMockUser("two", "2", true, false),
+				createMockUser("three", "3", true, true),
 			},
 			expected: 1,
 		},
 		filterPhoneTestcase{
 			users: []pagerduty.User{
-				createPDUser("one", "1", true, true),
-				createPDUser("two", "2", true, true),
-				createPDUser("three", "3", true, true),
+				createMockUser("one", "1", true, true),
+				createMockUser("two", "2", true, true),
+				createMockUser("three", "3", true, true),
 			},
 			expected: 0,
 		},
 		filterPhoneTestcase{
 			users: []pagerduty.User{
-				createPDUser("one", "1", true, false),
-				createPDUser("two", "2", true, false),
-				createPDUser("three", "3", true, false),
+				createMockUser("one", "1", true, false),
+				createMockUser("two", "2", true, false),
+				createMockUser("three", "3", true, false),
 			},
 			expected: 3,
 		},
@@ -111,6 +112,28 @@ func TestGetPDTeamMembers(t *testing.T) {
 	assert.Equal(t, 2, len(apiObjects))
 }
 
+func TestGetPDTeamMembersError(t *testing.T) {
+	mock := setupPagerDuty()
+	teamIDs := []string{"team_error", "team_support"}
+	users, apiObjects, err := mock.PdGetTeamMembers(teamIDs)
+
+	assert.Error(t, err)
+	assert.Nil(t, users)
+	assert.Nil(t, apiObjects)
+}
+
+func TestListOnCallFinal(t *testing.T) {
+	mock := setupPagerDuty()
+	scheduleIDs := []string{"1000", "2000"}
+	sinceOffset, _ := time.ParseDuration("-5h")
+	untilOffset, _ := time.ParseDuration("+5h")
+	users, apiObjects, err := mock.pdListOnCallUseFinal(scheduleIDs, sinceOffset, untilOffset)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(users))
+	assert.Equal(t, 3, len(apiObjects))
+}
+
 func setupPagerDuty() *PdClient {
 	cfg := config.PagerdutyConfig{AuthToken: "test", ApiUser: "test@company.com"}
 	pdc := pagerduty.Client{HTTPClient: &pagerDutyMock{}}
@@ -119,21 +142,25 @@ func setupPagerDuty() *PdClient {
 }
 
 func doMock(req *http.Request) (resp *http.Response, err error) {
-	pathBlocks := strings.Split(req.URL.Path, "/")
-	switch pathBlocks[1] {
+	pathParts := strings.Split(req.URL.Path, "/")
+	route := pathParts[1]
+	var id string
+	if len(pathParts) == 3 {
+		id = pathParts[2]
+	}
+
+	switch route {
 	case "users":
-		if len(pathBlocks) == 2 { //ListUser request
+		if id == "" { //ListUser request
 			result := pagerduty.ListUsersResponse{}
 			if req.URL.Query().Get("query") == "admin@test.com" {
-				result.Users = append(result.Users, createPDUser("Admin", "0123", true, true))
+				result.Users = append(result.Users, createMockUser("Admin", "0123", true, true))
 			} else {
-				result.Users = createUsersList()
+				result.Users = createMockUsersList()
 			}
 			return createResponse(200, result), nil
-		}
-
-		if len(pathBlocks) == 3 {
-			if pathBlocks[2] == "1337" {
+		} else {
+			if id == "1337" {
 				result := make(map[string]pagerduty.User)
 				result["user"] = pagerduty.User{
 					Name:      "BackendResponse",
@@ -150,11 +177,20 @@ func doMock(req *http.Request) (resp *http.Response, err error) {
 				return createResponse(404, result), nil
 			}
 		}
-		return
 	case "teams":
-		result := make(map[string]pagerduty.Team)
-		result["team"] = createTeam(pathBlocks[2])
-		return createResponse(200, result), nil
+		if id == "team_error" {
+			result := pagerduty.APIError{
+				StatusCode: 404,
+				APIError:   pagerduty.NullAPIErrorObject{Valid: true, ErrorObject: pagerduty.APIErrorObject{Code: 6001, Message: "Team Not Found"}},
+			}
+			return createResponse(404, result), nil
+		} else {
+			result := make(map[string]pagerduty.Team)
+			result["team"] = createMockTeam(pathParts[2])
+			return createResponse(200, result), nil
+		}
+	case "oncalls":
+		return createResponse(200, createMockOnCalls()), nil
 	}
 	return
 }
@@ -166,14 +202,14 @@ func createResponse(statusCode int, result any) *http.Response {
 
 	return &http.Response{
 		Body:       ioutil.NopCloser(b),
-		StatusCode: 200}
+		StatusCode: statusCode}
 }
 
-func createPDUser(name, id string, email, phone bool) pagerduty.User {
-	return createPDUserWithTeam(name, id, "default", email, phone)
+func createMockUser(name, id string, email, phone bool) pagerduty.User {
+	return createMockUserWithTeam(name, id, "default", email, phone)
 }
 
-func createPDUserWithTeam(name, id, teamid string, email, phone bool) pagerduty.User {
+func createMockUserWithTeam(name, id, teamid string, email, phone bool) pagerduty.User {
 	user := pagerduty.User{Name: name, Email: fmt.Sprintf("%s@test.com", strings.ToLower(name)), APIObject: pagerduty.APIObject{ID: id}, Teams: []pagerduty.Team{pagerduty.Team{APIObject: pagerduty.APIObject{ID: teamid}}}}
 	if email {
 		user.ContactMethods = append(user.ContactMethods, pagerduty.ContactMethod{Type: "email_contact_method_reference"})
@@ -185,16 +221,15 @@ func createPDUserWithTeam(name, id, teamid string, email, phone bool) pagerduty.
 	return user
 }
 
-func createUsersList() []pagerduty.User {
+func createMockUsersList() []pagerduty.User {
 	users := []pagerduty.User{}
-
-	users = append(users, createPDUserWithTeam("Admin", "0123", "team_admin", true, true))
-	users = append(users, createPDUserWithTeam("User1", "001", "team_support", true, true))
-	users = append(users, createPDUserWithTeam("User2", "002", "team_support", true, true))
+	users = append(users, createMockUserWithTeam("Admin", "0123", "team_admin", true, true))
+	users = append(users, createMockUserWithTeam("User1", "001", "team_support", true, true))
+	users = append(users, createMockUserWithTeam("User2", "002", "team_support", true, true))
 	return users
 }
 
-func createTeam(id string) pagerduty.Team {
+func createMockTeam(id string) pagerduty.Team {
 	switch id {
 	case "team_admin":
 		return pagerduty.Team{Name: "Admin Team", APIObject: pagerduty.APIObject{ID: id}}
@@ -202,4 +237,24 @@ func createTeam(id string) pagerduty.Team {
 		return pagerduty.Team{Name: "Admin Team", APIObject: pagerduty.APIObject{ID: id}}
 	}
 	return pagerduty.Team{}
+}
+
+func createMockOnCalls() pagerduty.ListOnCallsResponse {
+	oncalls := []pagerduty.OnCall{}
+
+	oncalls = append(oncalls, pagerduty.OnCall{
+		User:             pagerduty.User{APIObject: pagerduty.APIObject{ID: "0123"}},
+		EscalationLevel:  1,
+		EscalationPolicy: pagerduty.EscalationPolicy{Name: "Admin", APIObject: pagerduty.APIObject{ID: "100"}},
+		Schedule:         pagerduty.Schedule{Name: "Weekly OnCall Rotation", APIObject: pagerduty.APIObject{ID: "1000"}}})
+	oncalls = append(oncalls, pagerduty.OnCall{
+		User:             pagerduty.User{APIObject: pagerduty.APIObject{ID: "001"}},
+		EscalationLevel:  2,
+		EscalationPolicy: pagerduty.EscalationPolicy{Name: "Support", APIObject: pagerduty.APIObject{ID: "200"}},
+		Schedule:         pagerduty.Schedule{Name: "Daily OnCall Rotation", APIObject: pagerduty.APIObject{ID: "2000"}}})
+	oncalls = append(oncalls, pagerduty.OnCall{
+		User:             pagerduty.User{APIObject: pagerduty.APIObject{ID: "002"}},
+		EscalationLevel:  2,
+		EscalationPolicy: pagerduty.EscalationPolicy{Name: "Support", APIObject: pagerduty.APIObject{ID: "200"}}, Schedule: pagerduty.Schedule{Name: "Daily OnCall Rotation", APIObject: pagerduty.APIObject{ID: "2000"}}})
+	return pagerduty.ListOnCallsResponse{OnCalls: oncalls}
 }
