@@ -29,6 +29,8 @@ func NewEventBot(jobs *[]config.JobInfo) (*Bot, error) {
 		jobs:   jobs,
 	}
 
+}
+
 	for _, c := range availableCommands {
 		cmd := c()
 		if err := cmd.Init(); err != nil {
@@ -39,8 +41,6 @@ func NewEventBot(jobs *[]config.JobInfo) (*Bot, error) {
 		b.commands = append(b.commands, cmd)
 	}
 	return b, nil
-}
-
 func (b *Bot) StartListening() {
 
 	// Listen to slack events.

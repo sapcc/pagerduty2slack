@@ -3,12 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
+
 	"github.com/robfig/cron/v3"
 	cfct "github.com/sapcc/pagerduty2slack/internal/clients"
 	"github.com/sapcc/pagerduty2slack/internal/config"
 	log "github.com/sirupsen/logrus"
+
 	"os"
 	"os/signal"
+
 	"time"
 )
 

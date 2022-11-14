@@ -2,13 +2,14 @@ package clients
 
 import (
 	"fmt"
+	"strings"
+	"sync"
+
 	"github.com/PagerDuty/go-pagerduty"
 	"github.com/ahmetb/go-linq"
 	"github.com/sapcc/pagerduty2slack/internal/config"
 	log "github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
-	"strings"
-	"sync"
 )
 
 var defaultSlackClientBot *slack.Client
@@ -160,7 +161,8 @@ func GetSlackUser(pdUsers []pagerduty.User) ([]slack.User, error) {
 	var ul []slack.User
 	linq.From(slackUserList).WhereT(func(u slack.User) bool {
 		return linq.From(pdUsers).WhereT(func(pU pagerduty.User) bool {
-			return strings.Compare(strings.ToLower(pU.Email), strings.ToLower(u.Profile.Email)) == 0 && !u.Deleted
+			//TODO: Proper handling of users who have no email set in PagerDuty. Also the case for inactive users
+			return strings.Compare(strings.ToLower(pU.Email), strings.ToLower(u.Profile.Email)) == 0 && !u.Deleted && pU.Email != ""
 		}).Count() > 0
 	}).SelectT(func(u slack.User) slack.User {
 		if log.GetLevel() == log.DebugLevel {
