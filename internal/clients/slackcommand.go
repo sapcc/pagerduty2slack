@@ -20,9 +20,9 @@
 package clients
 
 import (
-    "github.com/sapcc/pulsar/pkg/auth"
-    "github.com/sapcc/pulsar/pkg/util"
-    "github.com/slack-go/slack"
+	"github.com/sapcc/pulsar/pkg/auth"
+	"github.com/sapcc/pulsar/pkg/util"
+	"github.com/slack-go/slack"
 )
 
 var availableCommands = make([]CommandFactory, 0)

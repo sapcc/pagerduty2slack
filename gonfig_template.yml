@@ -34,6 +34,7 @@ jobs:
         informUserIfContactPhoneNumberMissing: true
         handoverTimeFrameForward: "30m"
         handoverTimeFrameBackward: "0h"
+        # "OverridesOnlyIfThere"|""|"trace"
         syncStyle: OverridesOnlyIfThere
       syncObjects:
         slackGroupHandle: "onduty-1"
