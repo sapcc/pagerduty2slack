@@ -15,7 +15,7 @@ type ObjectSyncType string
 
 const (
 	PdScheduleSync ObjectSyncType = "PD Schedule"
-	PdTeamSync                    = "PD Team"
+	PdTeamSync     ObjectSyncType = "PD Team"
 )
 
 type JobInfo struct {
@@ -30,38 +30,23 @@ type JobInfo struct {
 	SlackGroupObject             slack.UserGroup       `json:"slack_group_object"`
 	SlackGroupUser               []slack.User          `json:"slack_group_user,omitempty"`
 	JobType                      ObjectSyncType        `json:"job_type,omitempty"`
-	CronJobId                    cron.EntryID          `json:"cron_job_id,omitempty"`
+	CronJobID                    cron.EntryID          `json:"cron_job_id,omitempty"`
 	CronObject                   *cron.Cron            `json:"cron_object,omitempty"`
 }
 
-func (jIS JobInfo) SlackHandleId() string {
+func (jIS JobInfo) SlackHandleID() string {
 	if jIS.JobType == PdTeamSync {
 		return jIS.Cfg.Jobs.TeamSync[jIS.JobCounter].ObjectsToSync.SlackGroupHandle
 	}
 	return jIS.Cfg.Jobs.ScheduleSync[jIS.JobCounter].ObjectsToSync.SlackGroupHandle
 }
-func (jIS JobInfo) PagerDutyIds() []string {
-
+func (jIS JobInfo) PagerDutyIDs() []string {
 	if jIS.JobType == PdTeamSync {
-		return jIS.Cfg.Jobs.TeamSync[jIS.JobCounter].ObjectsToSync.PagerdutyObjectId
+		return jIS.Cfg.Jobs.TeamSync[jIS.JobCounter].ObjectsToSync.PagerdutyObjectID
 	}
-	return jIS.Cfg.Jobs.ScheduleSync[jIS.JobCounter].ObjectsToSync.PagerdutyObjectId
-
+	return jIS.Cfg.Jobs.ScheduleSync[jIS.JobCounter].ObjectsToSync.PagerdutyObjectID
 }
-func (jIS JobInfo) getSlackUserNames(asLink bool) []string {
-	var uN []string
-	if jIS.SlackGroupObject.ID == "" {
-		return uN
-	}
-	if asLink {
-		linq.From(jIS.SlackGroupObject.Users).SelectT(func(u string) string {
-			return fmt.Sprintf("https://%s.slack.com/user/@%s", jIS.Cfg.Slack.Workspace, u)
-		}).ToSlice(&uN)
-		return uN
-	}
 
-	return jIS.SlackGroupObject.Users
-}
 func (jIS JobInfo) getIcon() string {
 	if jIS.JobType == PdTeamSync {
 		return ":threepeople:"
@@ -70,21 +55,20 @@ func (jIS JobInfo) getIcon() string {
 }
 
 func (jIS JobInfo) JobName() string {
-	return fmt.Sprintf("%s for PD: '%s' > Slack: '%s'", jIS.JobType, strings.Join(jIS.PagerDutyIds()[:], ","), jIS.SlackHandleId())
+	return fmt.Sprintf("%s for PD: '%s' > Slack: '%s'", jIS.JobType, strings.Join(jIS.PagerDutyIDs()[:], ","), jIS.SlackHandleID())
 }
 
 func (jIS JobInfo) NextRun() time.Time {
-	return jIS.CronObject.Entry(jIS.CronJobId).Next
+	return jIS.CronObject.Entry(jIS.CronJobID).Next
 }
 func (jIS JobInfo) LastRun() time.Time {
-	return jIS.CronObject.Entry(jIS.CronJobId).Prev
+	return jIS.CronObject.Entry(jIS.CronJobID).Prev
 }
 
 func (jIS JobInfo) GetSlackInfoMessage() slack.MsgOption {
-
 	divSection := slack.NewDividerBlock()
 
-	sHeaderText := fmt.Sprintf("%s %s > Slack Handle: `%s`", jIS.getIcon(), jIS.JobType, jIS.SlackHandleId())
+	sHeaderText := fmt.Sprintf("%s %s > Slack Handle: `%s`", jIS.getIcon(), jIS.JobType, jIS.SlackHandleID())
 	if !jIS.Cfg.Global.Write {
 		sHeaderText += " - !!! DRY RUN !!! No update done !!!"
 	}

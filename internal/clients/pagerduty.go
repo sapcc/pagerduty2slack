@@ -1,15 +1,16 @@
 package clients
 
 import (
+	"context"
 	"fmt"
 	"time"
 
+	"github.com/PagerDuty/go-pagerduty"
 	"github.com/ahmetb/go-linq"
+	"github.com/pkg/errors"
 	"github.com/sapcc/pulsar/pkg/util"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/PagerDuty/go-pagerduty"
-	"github.com/pkg/errors"
 	"github.com/sapcc/pagerduty2slack/internal/config"
 )
 
@@ -32,9 +33,9 @@ func PdNewClient(cfg *config.PagerdutyConfig) (*PdClient, error) {
 		pagerdutyClient: pagerdutyClient,
 	}
 
-	defaultUser, err := c.PdGetUserByEmail(cfg.ApiUser)
+	defaultUser, err := c.PdGetUserByEmail(cfg.APIUser)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error getting default pagerduty user with email %s", cfg.ApiUser)
+		return nil, errors.Wrapf(err, "error getting default pagerduty user with email %s", cfg.APIUser)
 	}
 	c.apiUserInstance = defaultUser
 
@@ -43,7 +44,7 @@ func PdNewClient(cfg *config.PagerdutyConfig) (*PdClient, error) {
 
 // PdGetUserByEmail returns the pagerduty user for the given email or an error.
 func (c *PdClient) PdGetUserByEmail(email string) (*pagerduty.User, error) {
-	userList, err := c.pagerdutyClient.ListUsers(pagerduty.ListUsersOptions{Query: email})
+	userList, err := c.pagerdutyClient.ListUsersWithContext(context.TODO(), pagerduty.ListUsersOptions{Query: email})
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +77,7 @@ func (c *PdClient) PdFilterUserWithoutPhone(users []pagerduty.User) []pagerduty.
 }
 
 // PdListOnCallUsers returns the OnCall users being on shift now
-func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration, layerSyncStyle config.SyncStyle) ([]pagerduty.User, []pagerduty.APIObject, error) {
+func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours, untilOffsetInHours time.Duration, layerSyncStyle config.SyncStyle) ([]pagerduty.User, []pagerduty.APIObject, error) {
 	if layerSyncStyle == config.FinalLayer {
 		return c.pdListOnCallUseFinal(scheduleIDs, sinceOffsetInHours, untilOffsetInHours)
 	} else {
@@ -84,15 +85,14 @@ func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, sinceOffsetInHours ti
 	}
 }
 
-func (c *PdClient) pdListOnCallUseFinal(scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration) ([]pagerduty.User, []pagerduty.APIObject, error) {
-
+func (c *PdClient) pdListOnCallUseFinal(scheduleIDs []string, sinceOffsetInHours, untilOffsetInHours time.Duration) ([]pagerduty.User, []pagerduty.APIObject, error) {
 	lo := pagerduty.ListOnCallOptions{
 		ScheduleIDs: scheduleIDs,
 		Since:       util.TimestampToString(time.Now().Add(-sinceOffsetInHours)),
 		Until:       util.TimestampToString(time.Now().Add(untilOffsetInHours)),
 		//Includes: []string{"users","schedules"}, // doesn't work - workaround sub request
 	}
-	onCallListD, err := c.pagerdutyClient.ListOnCalls(lo)
+	onCallListD, err := c.pagerdutyClient.ListOnCallsWithContext(context.TODO(), lo)
 	var ul []pagerduty.User
 
 	if err != nil {
@@ -104,11 +104,10 @@ func (c *PdClient) pdListOnCallUseFinal(scheduleIDs []string, sinceOffsetInHours
 	linq.From(onCallListD.OnCalls).DistinctByT(
 		func(oC pagerduty.OnCall) string { return oC.User.ID },
 	).SelectT(func(oC pagerduty.OnCall) pagerduty.User {
-
 		o := pagerduty.GetUserOptions{
 			Includes: []string{"contact_methods"},
 		}
-		u, err := c.pagerdutyClient.GetUser(oC.User.ID, o)
+		u, err := c.pagerdutyClient.GetUserWithContext(context.TODO(), oC.User.ID, o)
 
 		if err != nil {
 			sl = append(sl, oC.User.APIObject)
@@ -118,12 +117,11 @@ func (c *PdClient) pdListOnCallUseFinal(scheduleIDs []string, sinceOffsetInHours
 			}
 		}
 		return *u
-
 	}).ToSlice(&ul)
 	return ul, sl, nil
 }
 
-func (c *PdClient) pdListOnCallUseLayers(scheduleIDs []string, sinceOffsetInHours time.Duration, untilOffsetInHours time.Duration, layerSyncStyle config.SyncStyle) ([]pagerduty.User, []pagerduty.APIObject, error) {
+func (c *PdClient) pdListOnCallUseLayers(scheduleIDs []string, sinceOffsetInHours, untilOffsetInHours time.Duration, layerSyncStyle config.SyncStyle) ([]pagerduty.User, []pagerduty.APIObject, error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Errorf("PROGRAMMER FAIL > %s", r.(error))
@@ -148,7 +146,7 @@ func (c *PdClient) pdListOnCallUseLayers(scheduleIDs []string, sinceOffsetInHour
 	// get schedule objects
 	for _, schedule := range scheduleIDs {
 		var tul []pagerduty.User
-		scheduleO, err := c.pagerdutyClient.GetSchedule(schedule, lo)
+		scheduleO, err := c.pagerdutyClient.GetScheduleWithContext(context.TODO(), schedule, lo)
 		if scheduleO == nil || err != nil {
 			return nil, sl, err
 		}
@@ -156,7 +154,10 @@ func (c *PdClient) pdListOnCallUseLayers(scheduleIDs []string, sinceOffsetInHour
 		sl = append(sl, scheduleO.APIObject)
 
 		// get overrides (since we can't trust the info in schedule object, we have to request separately until API is fixed
-		ors, _ := c.pagerdutyClient.ListOverrides(schedule, loO)
+		ors, err := c.pagerdutyClient.ListOverridesWithContext(context.TODO(), schedule, loO)
+		if err != nil {
+			return nil, nil, fmt.Errorf("pagerduty: failed listing overrides: %w", err)
+		}
 		if ors != nil {
 			// add override layer if exist
 			if len(ors.Overrides) > 0 {
@@ -175,7 +176,6 @@ func (c *PdClient) pdListOnCallUseLayers(scheduleIDs []string, sinceOffsetInHour
 		}
 
 		if len(scheduleO.ScheduleLayers) > 0 {
-
 			// add rendered layers
 			linq.From(scheduleO.ScheduleLayers).SelectManyByT(
 				func(sL pagerduty.ScheduleLayer) linq.Query { return linq.From(sL.RenderedScheduleEntries) },
@@ -196,7 +196,7 @@ func (c *PdClient) getUser(user pagerduty.APIObject) pagerduty.User {
 	o := pagerduty.GetUserOptions{
 		Includes: []string{"contact_methods"},
 	}
-	u, err := c.pagerdutyClient.GetUser(user.ID, o)
+	u, err := c.pagerdutyClient.GetUserWithContext(context.TODO(), user.ID, o)
 	if err != nil {
 		return pagerduty.User{
 			APIObject: user,
@@ -212,7 +212,7 @@ func (c *PdClient) PdGetTeamMembers(teamIDs []string) ([]pagerduty.User, []pager
 	userListOpts.Includes = []string{"contact_methods", "notification_rules"}
 	userListOpts.TeamIDs = teamIDs
 
-	response, err := c.pagerdutyClient.ListUsers(userListOpts)
+	response, err := c.pagerdutyClient.ListUsersWithContext(context.TODO(), userListOpts)
 
 	if err != nil {
 		return nil, nil, err
@@ -229,7 +229,7 @@ func (c *PdClient) PdGetTeamMembers(teamIDs []string) ([]pagerduty.User, []pager
 
 	teamObjects := []pagerduty.APIObject{}
 	for _, id := range teamIDs {
-		response, err := c.pagerdutyClient.GetTeam(id)
+		response, err := c.pagerdutyClient.GetTeamWithContext(context.TODO(), id)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "team not found")
 		}

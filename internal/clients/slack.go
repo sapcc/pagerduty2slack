@@ -8,9 +8,10 @@ import (
 	"github.com/PagerDuty/go-pagerduty"
 	"github.com/ahmetb/go-linq"
 	"github.com/pkg/errors"
-	"github.com/sapcc/pagerduty2slack/internal/config"
 	log "github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
+
+	"github.com/sapcc/pagerduty2slack/internal/config"
 )
 
 var defaultSlackClientBot *slack.Client
@@ -51,8 +52,8 @@ func PostBlocksMessage(blocks ...slack.Block) error {
 	msO := slack.MsgOptionBlocks(blocks...)
 	return PostMessage(msO)
 }
-func PostMessage(msO slack.MsgOption) error {
 
+func PostMessage(msO slack.MsgOption) error {
 	if _, _, err := defaultSlackClientBot.PostMessage(slackInfoChannel.ID, msO); err != nil {
 		return err
 	}
@@ -60,8 +61,6 @@ func PostMessage(msO slack.MsgOption) error {
 	log.Debug("Message successfully sent to channel ", slackInfoChannel.Name)
 	return nil
 }
-
-/* #endregion */
 
 // Init creates a slack client with given token
 func Init(cfg config.SlackConfig) error {
@@ -73,21 +72,23 @@ func Init(cfg config.SlackConfig) error {
 	return LoadSlackMasterData()
 }
 
-//LoadSlackMasterData singleton master data to speed up
+// LoadSlackMasterData singleton master data to speed up
 func LoadSlackMasterData() (err error) {
-
 	log.Debug("loadSlackMasterData running ...")
 
 	slackChannelsTemp, err := GetChannels()
+	if err != nil {
+		return fmt.Errorf("slack: failed retrieving channels: %w", err)
+	}
 
 	slackUserListTemp, err := defaultSlackClientBot.GetUsers()
 	if err != nil {
-		return errors.Wrap(err, "get users failed")
+		return fmt.Errorf("slack: failed retrieving users: %w", err)
 	}
 
 	slackGrpsTemp, err := defaultSlackClientBot.GetUserGroups(slack.GetUserGroupsOptionIncludeUsers(true))
 	if err != nil {
-		return errors.Wrap(err, "get user groups failed")
+		return fmt.Errorf("slack: failed retrieving user groups: %w", err)
 	}
 
 	var mutex = &sync.Mutex{}
@@ -121,7 +122,11 @@ func GetSlackGroup(slackGroupHandle string) (slack.UserGroup, error) {
 	}).First()
 
 	if q != nil {
-		targetGroup = q.(slack.UserGroup)
+		var ok bool
+		targetGroup, ok = q.(slack.UserGroup)
+		if !ok {
+			return slack.UserGroup{}, fmt.Errorf("type assertion for slack.UserGroup failed")
+		}
 	} else {
 		log.Error("SLACK", ">", slackGroupHandle, " wasn't there @SLACK - check config!")
 		return targetGroup, fmt.Errorf("slack handle %s doesn't exist; check config", slackGroupHandle)
@@ -132,7 +137,6 @@ func GetSlackGroup(slackGroupHandle string) (slack.UserGroup, error) {
 
 // GetSlackUser delivers Slack User
 func GetSlackUser(pdUsers []pagerduty.User) ([]slack.User, error) {
-
 	// if no pdUsers given, we don't need to filter
 	if pdUsers == nil {
 		log.Warn("Empty PD user list given!")
@@ -159,28 +163,35 @@ func GetSlackUser(pdUsers []pagerduty.User) ([]slack.User, error) {
 }
 
 // SetSlackGroupUser sets an array of Slack User to an Slack Group (found by name)
-//func SetSlackGroupUser(slackGroupHandle string, slackUser []slack.User, bWrite bool) error {
+// func SetSlackGroupUser(slackGroupHandle string, slackUser []slack.User, bWrite bool) error {
 func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User) bool {
-
 	var bNoChange = true
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error(fmt.Sprintf("SLACK>%s (Searched Group: %s)", r.(error), jI.SlackHandleId()))
-			jI.Error = r.(error)
+			log.Error(fmt.Sprintf("SLACK>%s (Searched Group: %s)", r.(error), jI.SlackHandleID()))
+			var ok bool
+			jI.Error, ok = r.(error)
+			if !ok {
+				log.Info("type assertion for error failed")
+			}
 		}
 	}()
 
 	// get the group we are interested in
-	jI.SlackGroupObject, _ = GetSlackGroup(jI.SlackHandleId())
+	userGroup, err := GetSlackGroup(jI.SlackHandleID())
+	if err != nil {
+		return false
+	}
+	jI.SlackGroupObject = userGroup
 
 	if len(slackUser) == 0 {
 		err := fmt.Errorf("user list was empty; no update done")
-		log.Errorf("SLACK > %s :: %s", jI.SlackHandleId(), err)
+		log.Errorf("SLACK > %s :: %s", jI.SlackHandleID(), err)
 		jI.Error = err
 	}
 
-	fmt.Println(fmt.Sprintf("SLACK>TargetGroup.ID: %s [%s]", jI.SlackGroupObject.ID, jI.SlackGroupObject.Name))
+	fmt.Printf("SLACK>TargetGroup.ID: %s [%s]\n", jI.SlackGroupObject.ID, jI.SlackGroupObject.Name)
 
 	// we need a list of IDs
 	var slackUserIds []string
@@ -201,9 +212,6 @@ func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User) bool {
 	}
 
 	if jI.Cfg.Global.Write && !bNoChange {
-
-		//log.Debug(fmt.Sprintf("%s: %s",targetGroup.Name,strings.Join(slackUserIds, ","))
-
 		userGroup, err := defaultSlackClientUser.UpdateUserGroupMembers(jI.SlackGroupObject.ID, strings.Join(slackUserIds, ","))
 		if err != nil {
 			log.Error("SLACK", "> SLACK error: ", err)
@@ -218,7 +226,6 @@ func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User) bool {
 				jI.Error = err
 			}
 		}
-
 	} else {
 		log.Println("SLACK> no changes were written, because flag 'bWrite' was set to 'false'")
 	}
@@ -240,7 +247,6 @@ func DisableSlackGroup(jI *config.JobInfo) {
 
 // GetChannels gives the Channels with Members & co
 func GetChannels() ([]slack.Channel, error) {
-
 	cp := slack.GetConversationsParameters{
 		ExcludeArchived: true,
 		Types:           []string{"public_channel", "private_channel"},

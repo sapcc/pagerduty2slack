@@ -60,12 +60,10 @@ func RegisterCommand(factory CommandFactory) {
 
 	f := factory()
 	for _, knownCommand := range availableCommands {
-
 		// Return here if the command is already registered (equal description or keywords or if it is marked as disabled.
 		if knownCommand().Describe() == f.Describe() || util.IsSlicesEqual(knownCommand().Keywords(), f.Keywords()) || f.IsDisabled() {
 			return
 		}
 	}
-
 	availableCommands = append(availableCommands, factory)
 }

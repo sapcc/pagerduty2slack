@@ -3,8 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
-
+	"os"
 	"time"
 
 	yaml "gopkg.in/yaml.v2"
@@ -51,7 +50,7 @@ type SlackConfig struct {
 type PagerdutyConfig struct {
 	// Token to authenticate
 	AuthToken string `yaml:"authToken"`
-	ApiUser   string `yaml:"apiUser"`
+	APIUser   string `yaml:"apiUser"`
 }
 
 // PagerdutyScheduleOnDutyToSlackGroup Struct
@@ -92,17 +91,16 @@ type PagerdutyTeamToSlackGroup struct {
 // SyncObjects Struct
 type SyncObjects struct {
 	SlackGroupHandle  string   `yaml:"slackGroupHandle"`
-	PagerdutyObjectId []string `yaml:"pdObjectIds"`
+	PagerdutyObjectID []string `yaml:"pdObjectIds"`
 }
 
 // NewConfig reads the configuration from the given filePath.
 func NewConfig(configFilePath string) (cfg Config, err error) {
-
 	if configFilePath == "" {
 		return cfg, errors.New("path to configuration file not provided")
 	}
 
-	cfgBytes, err := ioutil.ReadFile(configFilePath)
+	cfgBytes, err := os.ReadFile(configFilePath)
 	if err != nil {
 		return cfg, fmt.Errorf("read configuration file: %s", err.Error())
 	}

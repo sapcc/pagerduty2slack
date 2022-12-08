@@ -3,16 +3,16 @@ package main
 import (
 	"flag"
 	"fmt"
-
-	"github.com/robfig/cron/v3"
-	cfct "github.com/sapcc/pagerduty2slack/internal/clients"
-	"github.com/sapcc/pagerduty2slack/internal/config"
-	log "github.com/sirupsen/logrus"
-
 	"os"
 	"os/signal"
-
+	"syscall"
 	"time"
+
+	"github.com/robfig/cron/v3"
+	log "github.com/sirupsen/logrus"
+
+	cfct "github.com/sapcc/pagerduty2slack/internal/clients"
+	"github.com/sapcc/pagerduty2slack/internal/config"
 )
 
 var opts config.Config
@@ -23,12 +23,16 @@ func printUsage() {
 	flag.PrintDefaults()
 }
 
-//func addScheduleOnDutyMembersToGroups(cfg config.Config, mj config.PagerdutyScheduleOnDutyToSlackGroup, jobCounter int) {
+// func addScheduleOnDutyMembersToGroups(cfg config.Config, mj config.PagerdutyScheduleOnDutyToSlackGroup, jobCounter int) {
 func addScheduleOnDutyMembersToGroups(jI config.JobInfo) config.JobInfo {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error(fmt.Sprintf("PROGRAMMER FAIL > %s", r.(error)))
-			jI.Error = r.(error)
+			err, ok := r.(error)
+			if !ok {
+				log.Warnf("type assertion for error failed")
+			}
+			jI.Error = err
 		}
 	}()
 	log.Info(jI.JobName())
@@ -54,7 +58,7 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) config.JobInfo {
 		jI.Error = fmt.Errorf(eS)
 	}
 
-	pdUsers, pdSchedules, err := pdC.PdListOnCallUsers(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].ObjectsToSync.PagerdutyObjectId, tfF, tfB, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.SyncStyle)
+	pdUsers, pdSchedules, err := pdC.PdListOnCallUsers(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].ObjectsToSync.PagerdutyObjectID, tfF, tfB, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.SyncStyle)
 	jI.PdObjects = pdSchedules
 	jI.PdObjectMember = pdUsers
 	if err != nil {
@@ -74,19 +78,28 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) config.JobInfo {
 	return jI
 }
 
-//func addTeamMembersToGroups(cfg config.Config, mj config.PagerdutyTeamToSlackGroup, jobCounter int) {
+// func addTeamMembersToGroups(cfg config.Config, mj config.PagerdutyTeamToSlackGroup, jobCounter int) {
 func addTeamMembersToGroups(jI config.JobInfo) config.JobInfo {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error(fmt.Sprintf("PROGRAMMER FAIL > %s", r.(error)))
-			jI.Error = r.(error)
+			err, ok := r.(error)
+			if !ok {
+				log.Warnf("type assertion for error failed")
+			}
+			jI.Error = err
 		}
 	}()
 	log.Info(jI.JobName())
 
 	// find members of given group
-	pdC, _ := cfct.PdNewClient(&jI.Cfg.Pagerduty)
-	pdUsers, pdTeams, err := pdC.PdGetTeamMembers(jI.PagerDutyIds())
+	pdC, err := cfct.PdNewClient(&jI.Cfg.Pagerduty)
+	if err != nil {
+		log.Error(fmt.Sprintf("PROGRAMMER FAIL > %s", err))
+		jI.Error = err
+		return jI
+	}
+	pdUsers, pdTeams, err := pdC.PdGetTeamMembers(jI.PagerDutyIDs())
 	jI.PdObjects = pdTeams
 	jI.PdObjectMember = pdUsers
 	if err != nil {
@@ -149,15 +162,24 @@ func main() {
 		log.Panic(err)
 		os.Exit(-1)
 	}
-	level, _ := log.ParseLevel(cfg.Global.LogLevel)
+	level, err := log.ParseLevel(cfg.Global.LogLevel)
+	if err != nil {
+		log.Info("failed parsing log level. defaulting to info")
+		level = log.InfoLevel
+	}
+
 	log.SetLevel(level)
 
-	loc, err := time.LoadLocation("UTC")
-	c := cron.New(cron.WithLocation(loc))
+	c := cron.New(cron.WithLocation(time.UTC))
 
 	_, err = c.AddFunc("0 * * * *", func() {
-		cfct.LoadSlackMasterData()
+		if err := cfct.LoadSlackMasterData(); err != nil {
+			log.Warnf("loading slack masterdata failed: %s", err.Error())
+		}
 	})
+	if err != nil {
+		log.Fatalf("adding Slack masterdata loading to cron failed: %s", err.Error())
+	}
 
 	//member sync jobs
 	for jobCounter, mj := range cfg.Jobs.ScheduleSync {
@@ -172,7 +194,7 @@ func main() {
 				log.Error(err)
 			}
 		})
-		jI.CronJobId = cronEntryID
+		jI.CronJobID = cronEntryID
 		jI.CronObject = c
 		jI.Error = err
 	}
@@ -189,7 +211,7 @@ func main() {
 				log.Error(err)
 			}
 		})
-		jI.CronJobId = cronEntryID
+		jI.CronJobID = cronEntryID
 		jI.CronObject = c
 		jI.Error = err
 	}
@@ -215,9 +237,10 @@ func main() {
 		log.Info(m)
 		//informSlack(&cfg, m, "JobList")
 
-		sig := make(chan os.Signal)
-		signal.Notify(sig, os.Interrupt, os.Kill)
-		<-sig
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
+		s := <-sig
+		log.Infof("received %v, shutting down", s.String())
 	} else {
 		log.Info("cfg.Global.RunAtStart is set to: ", cfg.Global.RunAtStart)
 	}

@@ -10,11 +10,11 @@ import (
 
 // Bot is the struct for the slack bot.
 type Bot struct {
-	client      *slack.Client
-	rtmClient   *slack.RTM
-	channelID   string
-	helpCommand Command
-	commands    []Command
+	client    *slack.Client
+	rtmClient *slack.RTM
+	// channelID   string
+	// helpCommand Command
+	commands []Command
 }
 
 func NewEventBot() (*Bot, error) {
@@ -37,42 +37,37 @@ func NewEventBot() (*Bot, error) {
 }
 
 func (b *Bot) StartListening() {
-
 	// Listen to slack events.
 	go b.rtmClient.ManageConnection()
 
 	for {
-		select {
-		case msg := <-b.rtmClient.IncomingEvents:
-			log.Debug("msg", "received slack event", "type", msg.Type)
+		msg := <-b.rtmClient.IncomingEvents
+		log.Debug("msg", "received slack event", "type", msg.Type)
 
-			switch e := msg.Data.(type) {
-			case *slack.MessageEvent:
-				if err := b.handleMessageEvent(e); err != nil {
-					log.Error("msg", "error handling slack event", "err", err.Error())
-					//b.respond(&slack.Msg{Text: "Failed to respond"}, &e.Msg)
-				}
+		switch e := msg.Data.(type) {
+		case *slack.MessageEvent:
+			b.handleMessageEvent(e)
 
-			case *slack.RTMError:
-				log.Error("msg", "slack RTM error", "err", e.Error())
+		case *slack.RTMError:
+			log.Error("msg", "slack RTM error", "err", e.Error())
 
-			case *slack.InvalidAuthEvent:
-				log.Error("msg", "slack authentication failed")
+		case *slack.InvalidAuthEvent:
+			log.Error("msg", "slack authentication failed")
 
-			case *slack.ConnectionErrorEvent:
-				log.Error("error connecting to slack", "err", e.Error())
-			}
+		case *slack.ConnectionErrorEvent:
+			log.Error("error connecting to slack", "err", e.Error())
+		default:
+			log.Warn("unexpected message data for type", msg.Type)
 		}
 	}
-
 }
 
-func (b *Bot) handleMessageEvent(e *slack.MessageEvent) error {
+func (b *Bot) handleMessageEvent(e *slack.MessageEvent) {
 	info := b.rtmClient.GetInfo()
 	prefix := fmt.Sprintf("<@%s>", info.User.ID)
 
 	if !strings.HasPrefix(e.Text, prefix) {
-		return nil
+		return
 	}
 
 	// Only respond if the bot is mentioned.
@@ -103,7 +98,7 @@ func (b *Bot) handleMessageEvent(e *slack.MessageEvent) error {
 
 	// Show the help if no command could be found.
 	if atLeastOneCommand {
-		return nil
+		return
 	}
 
 	/*response, err := b.helpCommand.Run(&e.Msg)
@@ -111,5 +106,5 @@ func (b *Bot) handleMessageEvent(e *slack.MessageEvent) error {
 	      return err
 	  }*/
 
-	return nil //b.respond(response, &e.Msg)
+	// return //b.respond(response, &e.Msg)
 }

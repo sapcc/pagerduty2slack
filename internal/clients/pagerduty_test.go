@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/PagerDuty/go-pagerduty"
-	"github.com/sapcc/pagerduty2slack/internal/config"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/sapcc/pagerduty2slack/internal/config"
 )
 
 type pagerDutyMock struct {
@@ -32,7 +33,6 @@ func TestGetUserByEmail(t *testing.T) {
 }
 
 func TestFilterUserWithoutPhone(t *testing.T) {
-
 	mock := setupPagerDuty()
 
 	type filterPhoneTestcase struct {
@@ -41,7 +41,7 @@ func TestFilterUserWithoutPhone(t *testing.T) {
 	}
 
 	testcases := []filterPhoneTestcase{
-		filterPhoneTestcase{
+		{
 			users: []pagerduty.User{
 				createMockUser("one", "1", true, true),
 				createMockUser("two", "2", true, false),
@@ -49,7 +49,7 @@ func TestFilterUserWithoutPhone(t *testing.T) {
 			},
 			expected: 1,
 		},
-		filterPhoneTestcase{
+		{
 			users: []pagerduty.User{
 				createMockUser("one", "1", true, true),
 				createMockUser("two", "2", true, true),
@@ -57,11 +57,19 @@ func TestFilterUserWithoutPhone(t *testing.T) {
 			},
 			expected: 0,
 		},
-		filterPhoneTestcase{
+		{
 			users: []pagerduty.User{
 				createMockUser("one", "1", true, false),
 				createMockUser("two", "2", true, false),
 				createMockUser("three", "3", true, false),
+			},
+			expected: 3,
+		},
+		{
+			users: []pagerduty.User{
+				createMockUser("one", "1", true, false),
+				createMockUser("two", "2", true, false),
+				createMockUser("three", "3", false, false),
 			},
 			expected: 3,
 		},
@@ -83,12 +91,12 @@ func TestGetUser(t *testing.T) {
 	}
 
 	testCases := []testCase{
-		testCase{
+		{
 			apiObject:    pagerduty.APIObject{ID: "1337", Summary: "Test"},
 			expectedID:   "1337",
 			expectedName: "BackendResponse",
 		},
-		testCase{
+		{
 			apiObject:    pagerduty.APIObject{ID: "1338", Summary: "Test"},
 			expectedID:   "1338",
 			expectedName: "Test",
@@ -125,8 +133,14 @@ func TestGetPDTeamMembersError(t *testing.T) {
 func TestListOnCallFinal(t *testing.T) {
 	mock := setupPagerDuty()
 	scheduleIDs := []string{"1000", "2000"}
-	sinceOffset, _ := time.ParseDuration("-5h")
-	untilOffset, _ := time.ParseDuration("+5h")
+	sinceOffset, err := time.ParseDuration("-5h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	untilOffset, err := time.ParseDuration("+5h")
+	if err != nil {
+		t.Fatal(err)
+	}
 	users, apiObjects, err := mock.pdListOnCallUseFinal(scheduleIDs, sinceOffset, untilOffset)
 
 	assert.NoError(t, err)
@@ -135,10 +149,10 @@ func TestListOnCallFinal(t *testing.T) {
 }
 
 func setupPagerDuty() *PdClient {
-	cfg := config.PagerdutyConfig{AuthToken: "test", ApiUser: "test@company.com"}
-	pdc := pagerduty.Client{HTTPClient: &pagerDutyMock{}}
-	return &PdClient{cfg: &cfg, pagerdutyClient: &pdc}
-
+	cfg := config.PagerdutyConfig{AuthToken: "test", APIUser: "test@company.com"}
+	client := pagerduty.NewClient("")
+	client.HTTPClient = &pagerDutyMock{}
+	return &PdClient{cfg: &cfg, pagerdutyClient: client}
 }
 
 func doMock(req *http.Request) (resp *http.Response, err error) {
@@ -165,8 +179,7 @@ func doMock(req *http.Request) (resp *http.Response, err error) {
 				result["user"] = pagerduty.User{
 					Name:      "BackendResponse",
 					Email:     "test@test.com",
-					Type:      "user",
-					APIObject: pagerduty.APIObject{ID: "1337"},
+					APIObject: pagerduty.APIObject{ID: "1337", Type: "user"},
 				}
 				return createResponse(200, result), nil
 			} else {
@@ -198,10 +211,16 @@ func doMock(req *http.Request) (resp *http.Response, err error) {
 func createResponse(statusCode int, result any) *http.Response {
 	r := []byte{}
 	b := bytes.NewBuffer(r)
-	json.NewEncoder(b).Encode(result)
+	e := json.NewEncoder(b).Encode(result)
+	if e != nil {
+		return &http.Response{
+			Body:       http.NoBody,
+			StatusCode: http.StatusInternalServerError,
+		}
+	}
 
 	return &http.Response{
-		Body:       ioutil.NopCloser(b),
+		Body:       io.NopCloser(b),
 		StatusCode: statusCode}
 }
 
@@ -210,7 +229,18 @@ func createMockUser(name, id string, email, phone bool) pagerduty.User {
 }
 
 func createMockUserWithTeam(name, id, teamid string, email, phone bool) pagerduty.User {
-	user := pagerduty.User{Name: name, Email: fmt.Sprintf("%s@test.com", strings.ToLower(name)), APIObject: pagerduty.APIObject{ID: id}, Teams: []pagerduty.Team{pagerduty.Team{APIObject: pagerduty.APIObject{ID: teamid}}}}
+	user := pagerduty.User{
+		Name:      name,
+		Email:     fmt.Sprintf("%s@test.com", strings.ToLower(name)),
+		APIObject: pagerduty.APIObject{ID: id},
+		Teams: []pagerduty.Team{
+			{
+				APIObject: pagerduty.APIObject{
+					ID: teamid,
+				},
+			},
+		},
+	}
 	if email {
 		user.ContactMethods = append(user.ContactMethods, pagerduty.ContactMethod{Type: "email_contact_method_reference"})
 	}

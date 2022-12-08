@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/PagerDuty/go-pagerduty"
-	"github.com/sapcc/pagerduty2slack/internal/config"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slacktest"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/sapcc/pagerduty2slack/internal/config"
 )
 
 type slackTestData struct {
@@ -76,7 +77,9 @@ func TestGetChannels(t *testing.T) {
 func TestGetSlackGroup(t *testing.T) {
 	testServer := setup()
 	defer testServer.Stop()
-	LoadSlackMasterData()
+	if err := LoadSlackMasterData(); err != nil {
+		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
+	}
 
 	group, err := GetSlackGroup("admins")
 	if assert.NoError(t, err) {
@@ -95,10 +98,10 @@ func TestLoadSlackMasterData(t *testing.T) {
 }
 
 func TestGetSlackUser(t *testing.T) {
-	pdUsers := []pagerduty.User{pagerduty.User{Email: "spengler@ghostbusters.example.com"}}
+	pdUsers := []pagerduty.User{{Email: "spengler@ghostbusters.example.com"}}
 	slackUserList = []slack.User{
-		slack.User{Profile: slack.UserProfile{Email: "spengler@ghostbusters.example.com"}},
-		slack.User{Profile: slack.UserProfile{Email: "max@mustermann.example.com"}},
+		{Profile: slack.UserProfile{Email: "spengler@ghostbusters.example.com"}},
+		{Profile: slack.UserProfile{Email: "max@mustermann.example.com"}},
 	}
 
 	actualUsers, err := GetSlackUser(pdUsers)
@@ -113,13 +116,15 @@ func TestSetSlackUserGroup(t *testing.T) {
 	testServer := setup()
 	defer testServer.Stop()
 
-	LoadSlackMasterData()
+	if err := LoadSlackMasterData(); err != nil {
+		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
+	}
 
 	jobInfo := &config.JobInfo{JobType: config.PdTeamSync,
 		Cfg: config.Config{
 			Jobs: config.JobsConfig{
 				TeamSync: []config.PagerdutyTeamToSlackGroup{
-					config.PagerdutyTeamToSlackGroup{
+					{
 						ObjectsToSync: config.SyncObjects{
 							SlackGroupHandle: "admins"},
 					},
@@ -130,24 +135,25 @@ func TestSetSlackUserGroup(t *testing.T) {
 			},
 		},
 	}
-	slackUsers := []slack.User{slack.User{ID: "W012A3CDE"}}
+	slackUsers := []slack.User{{ID: "W012A3CDE"}}
 	noChange := SetSlackGroupUser(jobInfo, slackUsers)
 
 	assert.False(t, noChange)
-
 }
 
 func TestSetSlackUserGroupNoChange(t *testing.T) {
 	testServer := setup()
 	defer testServer.Stop()
 
-	LoadSlackMasterData()
+	if err := LoadSlackMasterData(); err != nil {
+		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
+	}
 
 	jobInfo := &config.JobInfo{JobType: config.PdTeamSync,
 		Cfg: config.Config{
 			Jobs: config.JobsConfig{
 				TeamSync: []config.PagerdutyTeamToSlackGroup{
-					config.PagerdutyTeamToSlackGroup{
+					{
 						ObjectsToSync: config.SyncObjects{
 							SlackGroupHandle: "admins"},
 					},
@@ -158,7 +164,10 @@ func TestSetSlackUserGroupNoChange(t *testing.T) {
 			},
 		},
 	}
-	slackUsers := []slack.User{slack.User{ID: "W012A3CDE"}, slack.User{ID: "W07QCRPA4"}}
+	slackUsers := []slack.User{
+		{ID: "W012A3CDE"},
+		{ID: "W07QCRPA4"},
+	}
 	noChange := SetSlackGroupUser(jobInfo, slackUsers)
 
 	assert.True(t, noChange)
@@ -168,7 +177,9 @@ func TestDisableSlackGroup(t *testing.T) {
 	testServer := setup()
 	defer testServer.Stop()
 
-	LoadSlackMasterData()
+	if err := LoadSlackMasterData(); err != nil {
+		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
+	}
 
 	jobInfo := &config.JobInfo{
 		SlackGroupObject: slack.UserGroup{ID: "S0615G0KT"},
@@ -179,7 +190,6 @@ func TestDisableSlackGroup(t *testing.T) {
 }
 
 func (sd *slackTestData) createListConversationsHandler(w http.ResponseWriter, r *http.Request) {
-
 	channelResponse := struct {
 		Channels         []slack.Channel  `json:"channels"`
 		ResponseMetaData responseMetadata `json:"response_metadata"`
@@ -189,13 +199,17 @@ func (sd *slackTestData) createListConversationsHandler(w http.ResponseWriter, r
 	if sd.channels == nil || len(sd.channels) == 0 {
 		channelResponse.SlackResponse.Ok = false
 		channelResponse.Channels = []slack.Channel{}
-		json.NewEncoder(w).Encode(channelResponse)
+		if err := json.NewEncoder(w).Encode(channelResponse); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}
 
 	channelResponse.SlackResponse.Ok = true
 	channelResponse.Channels = sd.channels
 
-	json.NewEncoder(w).Encode(channelResponse)
+	if err := json.NewEncoder(w).Encode(channelResponse); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 func (sd *slackTestData) createListUsersHandler(w http.ResponseWriter, r *http.Request) {
@@ -206,7 +220,9 @@ func (sd *slackTestData) createListUsersHandler(w http.ResponseWriter, r *http.R
 	}{}
 	usersResponse.Users = sd.users
 	usersResponse.Ok = true
-	json.NewEncoder(w).Encode(usersResponse)
+	if err := json.NewEncoder(w).Encode(usersResponse); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 func (sd *slackTestData) createListUserGroupsHandler(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +234,9 @@ func (sd *slackTestData) createListUserGroupsHandler(w http.ResponseWriter, r *h
 
 	userGroupsResponse.Ok = true
 	userGroupsResponse.UserGroups = sd.userGroups
-	json.NewEncoder(w).Encode(userGroupsResponse)
+	if err := json.NewEncoder(w).Encode(userGroupsResponse); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 func (sd *slackTestData) createDisableUserGroupsHandler(w http.ResponseWriter, r *http.Request) {
@@ -239,19 +257,22 @@ func (sd *slackTestData) createDisableUserGroupsHandler(w http.ResponseWriter, r
 			g.UserCount = 0
 		}
 	}
-	json.NewEncoder(w).Encode(userGroupResponse)
+	if err := json.NewEncoder(w).Encode(userGroupResponse); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 func (sd *slackTestData) createUpdateUserGroupsUserHandler(w http.ResponseWriter, r *http.Request) {
-
 	updateUserGroupResponse := struct {
 		UserGroup slack.UserGroup `json:"usergroup"`
 		slack.SlackResponse
 	}{}
 	if err := r.ParseForm(); err != nil {
-		updateUserGroupResponse.Error = "invalid_arguements"
+		updateUserGroupResponse.Error = "invalid_arguments"
 		updateUserGroupResponse.Ok = false
-		json.NewEncoder(w).Encode(updateUserGroupResponse)
+		if err := json.NewEncoder(w).Encode(updateUserGroupResponse); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -279,7 +300,9 @@ func (sd *slackTestData) createUpdateUserGroupsUserHandler(w http.ResponseWriter
 	}
 
 	updateUserGroupResponse.Ok = true
-	json.NewEncoder(w).Encode(updateUserGroupResponse)
+	if err := json.NewEncoder(w).Encode(updateUserGroupResponse); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 func createChannelObject(name, id string) slack.Channel {
@@ -294,16 +317,15 @@ func createChannelObject(name, id string) slack.Channel {
 	}
 }
 
-func createUserObject(name, id, team_id string) slack.User {
+func createUserObject(name, id, teamID string) slack.User {
 	return slack.User{
 		ID:     id,
 		Name:   name,
-		TeamID: team_id,
+		TeamID: teamID,
 	}
 }
 
 func createUserGroupObject(id, teamID, name, handle string, users []slack.User) slack.UserGroup {
-
 	usernames := []string{}
 	for _, user := range users {
 		usernames = append(usernames, user.ID)
