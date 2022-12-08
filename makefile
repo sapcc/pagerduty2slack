@@ -14,7 +14,7 @@ endif
 
 default: build-all
 
-GO_BUILDFLAGS = -mod vendor
+GO_BUILDFLAGS =
 GO_LDFLAGS =
 GO_TESTENV =
 
@@ -63,14 +63,8 @@ build/cover.html: build/cover.out
 build:
 	@mkdir $@
 
-vendor: FORCE
+tidy-deps: FORCE
 	go mod tidy
-	go mod vendor
-	go mod verify
-
-vendor-compat: FORCE
-	go mod tidy -compat=$(shell awk '$$1 == "go" { print $$2 }' < go.mod)
-	go mod vendor
 	go mod verify
 
 license-headers: FORCE
@@ -101,8 +95,7 @@ help: FORCE
 	@printf "  \e[36mbuild/cover.html\e[0m       Generate an HTML file with source code annotations from the coverage report.\n"
 	@printf "\n"
 	@printf "\e[1mDevelopment\e[0m\n"
-	@printf "  \e[36mvendor\e[0m                 Run go mod tidy, go mod verify, and go mod vendor.\n"
-	@printf "  \e[36mvendor-compat\e[0m          Same as 'make vendor' but go mod tidy will use '-compat' flag with the Go version from go.mod file as value.\n"
+	@printf "  \e[36mtidy-deps\e[0m              Run go mod tidy and go mod verify.\n"
 	@printf "  \e[36mlicense-headers\e[0m        Add license headers to all .go files excluding the vendor directory.\n"
 	@printf "  \e[36mclean\e[0m                  Run git clean.\n"
 
