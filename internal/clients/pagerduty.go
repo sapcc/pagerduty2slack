@@ -47,6 +47,7 @@ func (c *PdClient) PdGetUserByEmail(email string) (*pagerduty.User, error) {
 	if err != nil {
 		return nil, err
 	}
+	// can this be more than 1 user?
 	for _, user := range userList.Users {
 		if user.Email == email {
 			return &user, nil
@@ -57,16 +58,21 @@ func (c *PdClient) PdGetUserByEmail(email string) (*pagerduty.User, error) {
 }
 
 // PdFilterUserWithoutPhone gives all User without a phone number set
-func (c *PdClient) PdFilterUserWithoutPhone(ul []pagerduty.User) []pagerduty.User {
-	var ulf []pagerduty.User
-	linq.From(ulf).WhereT(func(u pagerduty.User) bool {
+func (c *PdClient) PdFilterUserWithoutPhone(users []pagerduty.User) []pagerduty.User {
+	noPhoneUsers := []pagerduty.User{}
 
-		return linq.From(u.ContactMethods).SelectT(func(c pagerduty.ContactMethod) string {
-			return c.Type
-		}).Contains("phone_contact_method_reference")
-
-	}).ToSlice(&ulf)
-	return ulf
+	for _, user := range users {
+		hasPhone := false
+		for _, c := range user.ContactMethods {
+			if c.Type == "phone_contact_method_reference" {
+				hasPhone = true
+			}
+		}
+		if !hasPhone {
+			noPhoneUsers = append(noPhoneUsers, user)
+		}
+	}
+	return noPhoneUsers
 }
 
 // PdListOnCallUsers returns the OnCall users being on shift now
@@ -201,10 +207,10 @@ func (c *PdClient) getUser(user pagerduty.APIObject) pagerduty.User {
 }
 
 // PdGetTeamMembers returns a pagerduty schedule for the given name or an error.
-func (c *PdClient) PdGetTeamMembers(teamIds []string) ([]pagerduty.User, []pagerduty.APIObject, error) {
+func (c *PdClient) PdGetTeamMembers(teamIDs []string) ([]pagerduty.User, []pagerduty.APIObject, error) {
 	userListOpts := pagerduty.ListUsersOptions{}
 	userListOpts.Includes = []string{"contact_methods", "notification_rules"}
-	userListOpts.TeamIDs = teamIds
+	userListOpts.TeamIDs = teamIDs
 
 	response, err := c.pagerdutyClient.ListUsers(userListOpts)
 
@@ -212,20 +218,22 @@ func (c *PdClient) PdGetTeamMembers(teamIds []string) ([]pagerduty.User, []pager
 		return nil, nil, err
 	}
 
-	var tOL []pagerduty.APIObject
-	linq.From(teamIds).SelectT(func(t string) pagerduty.APIObject {
-		response, err := c.pagerdutyClient.GetTeam(t)
-		if err != nil {
-			return pagerduty.APIObject{}
-		}
-		return response.APIObject
-	}).ToSlice(&tOL)
-	//linq.From(response.Users).DistinctByT(func(u pagerduty.User) string {
-	//    return u.ID
-	//}).SelectManyByT(
-	//    func (u pagerduty.User) linq.Query { return linq.From(u.Teams) },
-	//    func (t pagerduty.Team, u pagerduty.User) pagerduty.APIObject { return t.APIObject },
-	//    ).DistinctByT(func(t pagerduty.APIObject) string { return t.ID}).ToSlice(&tOL)
+	// var tOL []pagerduty.APIObject
+	// linq.From(teamIDs).SelectT(func(t string) pagerduty.APIObject {
+	// 	response, err := c.pagerdutyClient.GetTeam(t)
+	// 	if err != nil {
+	// 		return pagerduty.APIObject{}
+	// 	}
+	// 	return response.APIObject
+	// }).ToSlice(&tOL)
 
-	return response.Users, tOL, nil
+	teamObjects := []pagerduty.APIObject{}
+	for _, id := range teamIDs {
+		response, err := c.pagerdutyClient.GetTeam(id)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "team not found")
+		}
+		teamObjects = append(teamObjects, response.APIObject)
+	}
+	return response.Users, teamObjects, nil
 }
