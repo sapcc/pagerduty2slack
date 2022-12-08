@@ -108,14 +108,5 @@ func NewConfig(configFilePath string) (cfg Config, err error) {
 	if err != nil {
 		return cfg, fmt.Errorf("parse configuration: %s", err.Error())
 	}
-
-	/*   if err := cfg.Slack.validate(); err != nil {
-	    log.Error("invalid slack configuration", "err", err)
-	}
-
-	if err := cfg.Ldap.validate(); err != nil {
-	    log.Error("invalid alertmanager configuration", "err", err)
-	}
-	*/
 	return cfg, nil
 }

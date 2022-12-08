@@ -25,7 +25,7 @@ type responseMetadata struct {
 	NextCursor string `json:"next_cursor"`
 }
 
-func setup() *slacktest.Server {
+func setup(t *testing.T) *slacktest.Server {
 	testServer := slacktest.NewTestServer()
 	go testServer.Start()
 
@@ -53,20 +53,28 @@ func setup() *slacktest.Server {
 	testServer.Handle("/usergroups.disable", testData.createDisableUserGroupsHandler)
 	testServer.Handle("/usergroups.users.update", testData.createUpdateUserGroupsUserHandler)
 
-	_slackInfoChannelName = "general"
+	slackInfoChannelName = "general"
 
 	cfg := config.SlackConfig{
 		UserSecurityToken: "TEST_TOKEN",
 		BotSecurityToken:  "TEST_TOKEN",
 	}
+	var err error
 	apiURLOption := slack.OptionAPIURL(testServer.GetAPIURL())
-	defaultSlackClientBot = NewSlackClient(cfg, SlackClientTypeBot, apiURLOption)
-	defaultSlackClientUser = NewSlackClient(cfg, SlackClientTypeUser, apiURLOption)
+	defaultSlackClientBot, err = NewSlackClient(cfg, SlackClientTypeBot, apiURLOption)
+	if err != nil {
+		t.Fatalf("failed setting up test server: %s", err.Error())
+	}
+	defaultSlackClientUser, err = NewSlackClient(cfg, SlackClientTypeUser, apiURLOption)
+	if err != nil {
+		t.Fatalf("failed setting up test server: %s", err.Error())
+	}
 	return testServer
 }
 
 func TestGetChannels(t *testing.T) {
-	testServer := setup()
+	testServer := setup(t)
+
 	defer testServer.Stop()
 	channels, err := GetChannels()
 	if assert.NoError(t, err) {
@@ -75,7 +83,7 @@ func TestGetChannels(t *testing.T) {
 }
 
 func TestGetSlackGroup(t *testing.T) {
-	testServer := setup()
+	testServer := setup(t)
 	defer testServer.Stop()
 	if err := LoadSlackMasterData(); err != nil {
 		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
@@ -88,7 +96,7 @@ func TestGetSlackGroup(t *testing.T) {
 }
 
 func TestLoadSlackMasterData(t *testing.T) {
-	testServer := setup()
+	testServer := setup(t)
 	defer testServer.Stop()
 
 	assert.NoError(t, LoadSlackMasterData())
@@ -113,7 +121,7 @@ func TestGetSlackUser(t *testing.T) {
 }
 
 func TestSetSlackUserGroup(t *testing.T) {
-	testServer := setup()
+	testServer := setup(t)
 	defer testServer.Stop()
 
 	if err := LoadSlackMasterData(); err != nil {
@@ -136,13 +144,14 @@ func TestSetSlackUserGroup(t *testing.T) {
 		},
 	}
 	slackUsers := []slack.User{{ID: "W012A3CDE"}}
-	noChange := SetSlackGroupUser(jobInfo, slackUsers)
+	noChange, err := SetSlackGroupUser(jobInfo, slackUsers)
 
+	assert.NoError(t, err)
 	assert.False(t, noChange)
 }
 
 func TestSetSlackUserGroupNoChange(t *testing.T) {
-	testServer := setup()
+	testServer := setup(t)
 	defer testServer.Stop()
 
 	if err := LoadSlackMasterData(); err != nil {
@@ -168,13 +177,14 @@ func TestSetSlackUserGroupNoChange(t *testing.T) {
 		{ID: "W012A3CDE"},
 		{ID: "W07QCRPA4"},
 	}
-	noChange := SetSlackGroupUser(jobInfo, slackUsers)
+	noChange, err := SetSlackGroupUser(jobInfo, slackUsers)
 
+	assert.NoError(t, err)
 	assert.True(t, noChange)
 }
 
 func TestDisableSlackGroup(t *testing.T) {
-	testServer := setup()
+	testServer := setup(t)
 	defer testServer.Stop()
 
 	if err := LoadSlackMasterData(); err != nil {

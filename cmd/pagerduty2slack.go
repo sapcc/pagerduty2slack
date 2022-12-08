@@ -24,7 +24,7 @@ func printUsage() {
 }
 
 // func addScheduleOnDutyMembersToGroups(cfg config.Config, mj config.PagerdutyScheduleOnDutyToSlackGroup, jobCounter int) {
-func addScheduleOnDutyMembersToGroups(jI config.JobInfo) config.JobInfo {
+func addScheduleOnDutyMembersToGroups(jI config.JobInfo) (config.JobInfo, error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error(fmt.Sprintf("PROGRAMMER FAIL > %s", r.(error)))
@@ -40,21 +40,21 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) config.JobInfo {
 	// find members of given group
 	pdC, err := cfct.PdNewClient(&jI.Cfg.Pagerduty)
 	if err != nil {
-		log.Fatal(err)
+		return config.JobInfo{}, fmt.Errorf("adding members to slack groups failed: %w", err)
 	}
 
 	tfF, err := time.ParseDuration(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.HandoverTimeFrameForward)
 	if err != nil {
 		tfF = time.Nanosecond * 0
 		eS := fmt.Sprintf("Invalid duration given in job %d: %s", jI.JobCounter, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.HandoverTimeFrameForward)
-		log.Warnf(eS)
+		log.Warn(eS)
 		jI.Error = fmt.Errorf(eS)
 	}
 	tfB, err := time.ParseDuration(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.HandoverTimeFrameBackward)
 	if err != nil {
 		tfB = time.Nanosecond * 0
 		eS := fmt.Sprintf("Invalid duration given in job %d: %s. Use default 0. (%s)", jI.JobCounter, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.HandoverTimeFrameBackward, err)
-		log.Warnf(eS)
+		log.Warn(eS)
 		jI.Error = fmt.Errorf(eS)
 	}
 
@@ -63,19 +63,21 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) config.JobInfo {
 	jI.PdObjectMember = pdUsers
 	if err != nil {
 		jI.Error = err
-		return jI
+		return jI, nil
 	}
 
 	// get all SLACK users, bcz. we need the SLACK user id and match them with the ldap users
 	jI.SlackGroupUser, err = cfct.GetSlackUser(pdUsers)
 	if err != nil {
 		jI.Error = err
-		return jI
+		return jI, nil
 	}
 
 	// put ldap users which also have a slack account to our slack group (who's not in the ldap group is out)
-	cfct.SetSlackGroupUser(&jI, jI.SlackGroupUser)
-	return jI
+	if _, err = cfct.SetSlackGroupUser(&jI, jI.SlackGroupUser); err != nil {
+		return config.JobInfo{}, fmt.Errorf("adding OnDuty members to slack group failed: %w", err)
+	}
+	return jI, nil
 }
 
 // func addTeamMembersToGroups(cfg config.Config, mj config.PagerdutyTeamToSlackGroup, jobCounter int) {
@@ -122,20 +124,16 @@ func addTeamMembersToGroups(jI config.JobInfo) config.JobInfo {
 	if len(slackUserFilteredList) == 0 && jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.DisableSlackHandleTemporaryIfNoneOnShift {
 		cfct.DisableSlackGroup(&jI)
 	} else {
-		cfct.SetSlackGroupUser(&jI, slackUserFilteredList)
+		if _, err := cfct.SetSlackGroupUser(&jI, slackUserFilteredList); err != nil {
+			log.Warnf("updating slack user group failed: %s", err.Error())
+			return jI
+		}
 	}
 
 	return jI
 }
 
 func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error(fmt.Sprintf("PROGRAMMER FAIL > %s", r.(error)))
-			printUsage()
-		}
-	}()
-
 	log.SetFormatter(&log.JSONFormatter{})
 	//log.SetFormatter(&log.TextFormatter{})
 	log.SetLevel(log.DebugLevel)
@@ -152,19 +150,19 @@ func main() {
 
 	cfg, err := config.NewConfig(opts.ConfigFilePath)
 	if err != nil {
-		log.Panic(err)
+		log.Error(err)
 		printUsage()
-		os.Exit(-1)
+		os.Exit(1)
 	}
 
 	err = cfct.Init(cfg.Slack)
 	if err != nil {
-		log.Panic(err)
-		os.Exit(-1)
+		log.Error(err)
+		os.Exit(1)
 	}
 	level, err := log.ParseLevel(cfg.Global.LogLevel)
 	if err != nil {
-		log.Info("failed parsing log level. defaulting to info")
+		log.Info("parsing log level failed, defaulting to info")
 		level = log.InfoLevel
 	}
 
@@ -189,9 +187,13 @@ func main() {
 			JobType:    config.PdScheduleSync,
 		}
 		cronEntryID, err := c.AddFunc(mj.CrontabExpressionForRepetition, func() {
-			err := cfct.PostMessage(addScheduleOnDutyMembersToGroups(jI).GetSlackInfoMessage())
+			updatesJobInfo, err := addScheduleOnDutyMembersToGroups(jI)
 			if err != nil {
-				log.Error(err)
+				log.Warnf("adding OnDuty members to slack failed: %s", err.Error())
+				return
+			}
+			if err = cfct.PostMessage(updatesJobInfo.GetSlackInfoMessage()); err != nil {
+				log.Warnf("posting update to slack failed: %s", err.Error())
 			}
 		})
 		jI.CronJobID = cronEntryID
@@ -229,7 +231,7 @@ func main() {
 				continue
 			}
 
-			log.Debug(fmt.Sprintf("Job %d: next run %s; valid: %v", e.ID, e.Next, e.Valid()))
+			log.Debugf("job %d: next run %s; valid: %v", e.ID, e.Next, e.Valid())
 			if e.Valid() {
 				c.Entry(e.ID).WrappedJob.Run()
 			}
