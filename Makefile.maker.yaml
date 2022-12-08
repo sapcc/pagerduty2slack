@@ -1,0 +1,25 @@
+# Configuration file for <https://github.com/sapcc/go-makefile-maker>
+
+metadata:
+  url: https://github.com/sapcc/pagerduty2slack
+
+binaries:
+  - name: pagerduty2slack
+    fromPackage: ./cmd
+    installTo: bin/
+
+coverageTest:
+  only: "/internal"
+  except: "/test"
+
+vendoring:
+  enabled: true
+
+dockerfile:
+  enabled: true
+  entrypoint: ["pagerduty2slack", "-config", "/etc/config/_run_config.yaml"]
+
+golangciLint:
+  createConfig: true
+  errcheckExcludes:
+    - encoding/json.Marshal

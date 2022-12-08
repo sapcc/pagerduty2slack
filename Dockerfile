@@ -1,17 +1,25 @@
-FROM golang:1.16.5-alpine3.14 as builder
-WORKDIR $GOPATH/src/github.com/sapcc/pagerduty2slack
-RUN apk add --no-cache make git
-COPY . .
-ARG VERSION
-RUN go mod download
-RUN go build -o ./bin/pagerduty2slack ./cmd/pagerduty2slack.go
-RUN make build
-#RUN ls -lisa ./bin
+FROM golang:1.19.3-alpine3.16 as builder
 
-FROM alpine:3.14
-LABEL maintainer="Tilo Geissler <tilo.geissler@@sap.com>"
-LABEL source_repository="https://github.com/sapcc/pagerduty2slack"
+RUN apk add --no-cache gcc git make musl-dev
 
-RUN apk add --no-cache curl
-COPY --from=builder /go/src/github.com/sapcc/pagerduty2slack/bin/pagerduty2slack /usr/local/bin/
-CMD ["pagerduty2slack","-config","/etc/config/_run_config.yaml"]
+COPY . /src
+ARG BININFO_BUILD_DATE BININFO_COMMIT_HASH BININFO_VERSION # provided to 'make install'
+RUN make -C /src install PREFIX=/pkg GO_BUILDFLAGS='-mod vendor'
+
+################################################################################
+
+FROM alpine:3.16
+
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /pkg/ /usr/
+
+ARG BININFO_BUILD_DATE BININFO_COMMIT_HASH BININFO_VERSION
+LABEL source_repository="https://github.com/sapcc/pagerduty2slack" \
+  org.opencontainers.image.url="https://github.com/sapcc/pagerduty2slack" \
+  org.opencontainers.image.created=${BININFO_BUILD_DATE} \
+  org.opencontainers.image.revision=${BININFO_COMMIT_HASH} \
+  org.opencontainers.image.version=${BININFO_VERSION}
+
+USER nobody:nobody
+WORKDIR /var/empty
+ENTRYPOINT [ "pagerduty2slack", "-config", "/etc/config/_run_config.yaml" ]
