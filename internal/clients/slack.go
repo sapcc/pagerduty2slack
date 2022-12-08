@@ -165,17 +165,6 @@ func GetSlackUser(pdUsers []pagerduty.User) ([]slack.User, error) {
 func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User) (noChange bool, err error) {
 	var bNoChange = true
 
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error(fmt.Sprintf("SLACK>%s (Searched Group: %s)", r.(error), jI.SlackHandleID()))
-			var ok bool
-			jI.Error, ok = r.(error)
-			if !ok {
-				log.Info("type assertion for error failed")
-			}
-		}
-	}()
-
 	// get the group we are interested in
 	userGroup, err := GetSlackGroup(jI.SlackHandleID())
 	if err != nil {

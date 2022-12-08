@@ -122,12 +122,6 @@ func (c *PdClient) pdListOnCallUseFinal(scheduleIDs []string, sinceOffsetInHours
 }
 
 func (c *PdClient) pdListOnCallUseLayers(scheduleIDs []string, sinceOffsetInHours, untilOffsetInHours time.Duration, layerSyncStyle config.SyncStyle) ([]pagerduty.User, []pagerduty.APIObject, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Errorf("PROGRAMMER FAIL > %s", r.(error))
-		}
-	}()
-
 	// distinct list of schedule metadata
 	var sl []pagerduty.APIObject
 	var ul []pagerduty.User

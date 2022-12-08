@@ -25,16 +25,6 @@ func printUsage() {
 
 // func addScheduleOnDutyMembersToGroups(cfg config.Config, mj config.PagerdutyScheduleOnDutyToSlackGroup, jobCounter int) {
 func addScheduleOnDutyMembersToGroups(jI config.JobInfo) (config.JobInfo, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error(fmt.Sprintf("PROGRAMMER FAIL > %s", r.(error)))
-			err, ok := r.(error)
-			if !ok {
-				log.Warnf("type assertion for error failed")
-			}
-			jI.Error = err
-		}
-	}()
 	log.Info(jI.JobName())
 
 	// find members of given group
@@ -82,16 +72,6 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) (config.JobInfo, error)
 
 // func addTeamMembersToGroups(cfg config.Config, mj config.PagerdutyTeamToSlackGroup, jobCounter int) {
 func addTeamMembersToGroups(jI config.JobInfo) config.JobInfo {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error(fmt.Sprintf("PROGRAMMER FAIL > %s", r.(error)))
-			err, ok := r.(error)
-			if !ok {
-				log.Warnf("type assertion for error failed")
-			}
-			jI.Error = err
-		}
-	}()
 	log.Info(jI.JobName())
 
 	// find members of given group
@@ -150,22 +130,19 @@ func main() {
 
 	cfg, err := config.NewConfig(opts.ConfigFilePath)
 	if err != nil {
-		log.Error(err)
 		printUsage()
-		os.Exit(1)
+		log.Fatal(err)
 	}
 
 	err = cfct.Init(cfg.Slack)
 	if err != nil {
-		log.Error(err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 	level, err := log.ParseLevel(cfg.Global.LogLevel)
 	if err != nil {
 		log.Info("parsing log level failed, defaulting to info")
 		level = log.InfoLevel
 	}
-
 	log.SetLevel(level)
 
 	c := cron.New(cron.WithLocation(time.UTC))
