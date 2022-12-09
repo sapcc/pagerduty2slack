@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/PagerDuty/go-pagerduty"
-	"github.com/ahmetb/go-linq"
 	"github.com/robfig/cron/v3"
 	"github.com/slack-go/slack"
 )
@@ -124,11 +123,6 @@ func (jIS JobInfo) getSlackInfoMessageBodyTeamSync() *slack.TextBlockObject {
 	}
 }
 func (jIS JobInfo) getSlackInfoMessageBodyScheduleSync() *slack.TextBlockObject {
-	var uL []string
-	linq.From(jIS.SlackGroupUser).SelectT(func(u slack.User) string {
-		return u.Profile.DisplayNameNormalized
-	}).ToSlice(&uL)
-
 	var sL []string
 	for _, aO := range jIS.PdObjectMember {
 		sL = append(sL, fmt.Sprintf("<%s|%s>", aO.HTMLURL, aO.Summary))

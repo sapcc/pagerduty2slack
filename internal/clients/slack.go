@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/PagerDuty/go-pagerduty"
-	"github.com/ahmetb/go-linq"
 	log "github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
 
@@ -112,26 +111,27 @@ func LoadSlackMasterData() (err error) {
 
 // GetSlackGroup requests existing Group for given name
 func GetSlackGroup(slackGroupHandle string) (slack.UserGroup, error) {
-	var targetGroup slack.UserGroup
+	if slackGroupHandle == "" {
+		return slack.UserGroup{}, fmt.Errorf("slack: finding group failed, empty handle")
+	}
 
+	// TODO: do we need this?
 	for _, group := range slackGrps {
 		log.Debugf("slack group: ID: %s, Name: %s, Count: %d (DateDeleted: %s) - %s\n", group.ID, group.Name, group.UserCount, group.DateDelete, group.Description)
 	}
 
 	// get the group we are interested in
-	q := linq.From(slackGrps).WhereT(func(group slack.UserGroup) bool {
-		return strings.Compare(group.Handle, slackGroupHandle) == 0
-	}).First()
-
-	if q != nil {
-		var ok bool
-		targetGroup, ok = q.(slack.UserGroup)
-		if !ok {
-			return slack.UserGroup{}, fmt.Errorf("type assertion for slack.UserGroup failed")
+	var targetGroup slack.UserGroup
+	for _, g := range slackGrps {
+		if strings.EqualFold(g.Handle, slackGroupHandle) {
+			targetGroup = g
+			break
 		}
-	} else {
+	}
+
+	if targetGroup.Handle == "" {
 		log.Errorf("slack: finding group handle '%s' failed. check config", slackGroupHandle)
-		return targetGroup, fmt.Errorf("slack: finding group handle '%s' failed. check config", slackGroupHandle)
+		return slack.UserGroup{}, fmt.Errorf("slack: finding group handle '%s' failed. check config", slackGroupHandle)
 	}
 
 	return targetGroup, nil
@@ -146,23 +146,14 @@ func GetSlackUser(pdUsers []pagerduty.User) ([]slack.User, error) {
 	}
 
 	// get all SLACK User Ids which are in our PD Group - some people are not in slack
-	var ul []slack.User
-	linq.From(slackUserList).WhereT(func(u slack.User) bool {
-		return linq.From(pdUsers).WhereT(func(pU pagerduty.User) bool {
-			//TODO: Proper handling of users who have no email set in PagerDuty. Also the case for inactive users
-			return strings.Compare(strings.ToLower(pU.Email), strings.ToLower(u.Profile.Email)) == 0 && !u.Deleted && pU.Email != ""
-		}).Count() > 0
-	}).SelectT(func(u slack.User) slack.User {
-		log.Debugf("slack: user %s - %s (%s)(deleted: %t)\n", u.ID, u.Name, u.Profile.DisplayName, u.Deleted)
-		return u
-	}).ToSlice(&ul)
+	userList := matchPDToSlackUsers(pdUsers, slackUserList)
 
-	log.Info(fmt.Printf("%d user in PD user group | %d in SLACK at all | %d user will be in SLACK group\n", len(pdUsers), len(slackUserList), len(ul)))
-	return ul, nil
+	log.Info(fmt.Printf("%d user in PD user group | %d in SLACK at all | %d user will be in SLACK group\n", len(pdUsers), len(slackUserList), len(userList)))
+	return userList, nil
 }
 
 // SetSlackGroupUser sets an array of Slack User to an Slack Group (found by name), returns true if noop
-func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User) (noChange bool, err error) {
+func SetSlackGroupUser(jI *config.JobInfo, slackUsers []slack.User) (noChange bool, err error) {
 	var bNoChange = true
 
 	// get the group we are interested in
@@ -172,22 +163,21 @@ func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User) (noChange boo
 	}
 	jI.SlackGroupObject = userGroup
 
-	if len(slackUser) == 0 {
+	if len(slackUsers) == 0 {
 		log.Warnf("slack: user list is empty; nothing to update")
 		jI.Error = fmt.Errorf("slack: user list empty; no update done")
+		return true, nil
 	}
 
 	log.Infof("slack: target group %s[%s]", jI.SlackGroupObject.ID, jI.SlackGroupObject.Name)
 
 	// we need a list of IDs
 	var slackUserIds []string
-	linq.From(slackUser).SelectT(func(u slack.User) string {
-		return u.ID
-	}).Distinct().ToSlice(&slackUserIds)
 
-	if len(slackUser) == len(jI.SlackGroupObject.Users) {
-		for _, user := range slackUser {
-			if !linq.From(jI.SlackGroupObject.Users).Contains(user.ID) {
+	if len(slackUsers) == len(jI.SlackGroupObject.Users) {
+		for _, user := range slackUsers {
+			if !groupContainsUser(jI.SlackGroupObject.Users, user) {
+				slackUserIds = append(slackUserIds, user.ID)
 				bNoChange = false
 				continue
 			}
@@ -215,7 +205,7 @@ func SetSlackGroupUser(jI *config.JobInfo, slackUser []slack.User) (noChange boo
 	} else {
 		log.Infof("slack: no changes executed. flag 'Write' is set to '%v'", jI.Cfg.Global.Write)
 	}
-	log.Infof("slack: group %s has '%d' members(s)", jI.SlackGroupObject.Name, len(slackUser))
+	log.Infof("slack: group %s has '%d' members(s)", jI.SlackGroupObject.Name, len(slackUsers))
 	return bNoChange, nil
 }
 
@@ -242,4 +232,37 @@ func GetChannels() ([]slack.Channel, error) {
 		return nil, fmt.Errorf("slack: retrieving channels failed: %w", err)
 	}
 	return channels, nil
+}
+
+// groupContainsUser returns true user is contained in the groupUserIDs
+func groupContainsUser(groupUserIDs []string, user slack.User) bool {
+	if len(groupUserIDs) == 0 {
+		return false
+	}
+	for _, id := range groupUserIDs {
+		if id == user.ID {
+			return true
+		}
+	}
+	return false
+}
+
+// matchPDToSlackUsers returns a list of valid Slack users that match the list of PagerDuty users
+func matchPDToSlackUsers(pdUsers []pagerduty.User, slackUsers []slack.User) []slack.User {
+	var matchedSlackUsers []slack.User
+	for _, pd := range pdUsers {
+		if pd.Email == "" {
+			log.Infof("pagerduty: skipping user %s, no email assigned", pd.Name)
+			continue
+		}
+		for _, slack := range slackUsers {
+			if slack.Deleted {
+				continue
+			}
+			if strings.EqualFold(pd.Email, slack.Profile.Email) {
+				matchedSlackUsers = append(matchedSlackUsers, slack)
+			}
+		}
+	}
+	return matchedSlackUsers
 }
