@@ -7,8 +7,6 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
-
-	"strings"
 )
 
 // Bot is the struct for the slack bot.
@@ -28,19 +26,19 @@ func NewEventBot(jobs *[]config.JobInfo) (*Bot, error) {
 		app:    socketmode.New(defaultSlackClientSocket, socketmode.OptionDebug(false)),
 		jobs:   jobs,
 	}
-
+    return b, nil
 }
 
-	for _, c := range availableCommands {
-		cmd := c()
-		if err := cmd.Init(); err != nil {
-			log.Info("msg", "failed to initialize command", "keywords", strings.Join(cmd.Keywords(), ", "), "description", cmd.Describe(), "err", err.Error())
-			continue
-		}
-		log.Info("msg", "registering command", "keywords", strings.Join(cmd.Keywords(), ", "), "description", cmd.Describe())
-		b.commands = append(b.commands, cmd)
-	}
-	return b, nil
+	//for _, c := range availableCommands {
+	//	cmd := c()
+	//	if err := cmd.Init(); err != nil {
+	//		log.Info("msg", "failed to initialize command", "keywords", strings.Join(cmd.Keywords(), ", "), "description", cmd.Describe(), "err", err.Error())
+	//		continue
+	//	}
+	//	log.Info("msg", "registering command", "keywords", strings.Join(cmd.Keywords(), ", "), "description", cmd.Describe())
+	//	b.commands = append(b.commands, cmd)
+	//}
+	//return b, nil
 func (b *Bot) StartListening() {
 
 	// Listen to slack events.
