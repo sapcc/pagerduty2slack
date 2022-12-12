@@ -17,7 +17,7 @@
 *
 *******************************************************************************/
 
-package slack
+package slackclient
 
 import (
 	"github.com/sapcc/pulsar/pkg/auth"
