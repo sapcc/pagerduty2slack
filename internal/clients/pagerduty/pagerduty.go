@@ -1,4 +1,4 @@
-package clients
+package pagerduty
 
 import (
 	"context"
@@ -21,8 +21,8 @@ type PdClient struct {
 	apiUserInstance *pagerduty.User
 }
 
-// PdNewClient returns a new PagerdutyClient or an error.
-func PdNewClient(cfg *config.PagerdutyConfig) (*PdClient, error) {
+// NewClient returns a new PagerdutyClient or an error.
+func NewClient(cfg *config.PagerdutyConfig) (*PdClient, error) {
 	pagerdutyClient := pagerduty.NewClient(cfg.AuthToken)
 	if pagerdutyClient == nil {
 		return nil, fmt.Errorf("pagerduty: failed to initialize client")
@@ -58,8 +58,8 @@ func (c *PdClient) PdGetUserByEmail(email string) (*pagerduty.User, error) {
 	return nil, fmt.Errorf("user with email '%s' not found", email)
 }
 
-// PdFilterUserWithoutPhone gives all User without a phone number set
-func (c *PdClient) PdFilterUserWithoutPhone(users []pagerduty.User) []pagerduty.User {
+// WithoutPhone gives all User without a phone number set
+func (c *PdClient) WithoutPhone(users []pagerduty.User) []pagerduty.User {
 	noPhoneUsers := []pagerduty.User{}
 
 	for _, user := range users {
@@ -76,8 +76,8 @@ func (c *PdClient) PdFilterUserWithoutPhone(users []pagerduty.User) []pagerduty.
 	return noPhoneUsers
 }
 
-// PdListOnCallUsers returns the OnCall users being on shift now
-func (c *PdClient) PdListOnCallUsers(scheduleIDs []string, since, until offsetInHours, layerSyncStyle config.SyncStyle) ([]pagerduty.User, []pagerduty.APIObject, error) {
+// ListOnCallUsers returns the OnCall users being on shift now
+func (c *PdClient) ListOnCallUsers(scheduleIDs []string, since, until offsetInHours, layerSyncStyle config.SyncStyle) ([]pagerduty.User, []pagerduty.APIObject, error) {
 	if layerSyncStyle == config.FinalLayer {
 		return c.pdListOnCallUseFinal(scheduleIDs, since, until)
 	} else {
@@ -179,8 +179,8 @@ func (c *PdClient) getUser(user pagerduty.APIObject) pagerduty.User {
 	return *u
 }
 
-// PdGetTeamMembers returns a pagerduty schedule for the given name or an error.
-func (c *PdClient) PdGetTeamMembers(teamIDs []string) ([]pagerduty.User, []pagerduty.APIObject, error) {
+// TeamMembers returns a pagerduty schedule for the given name or an error.
+func (c *PdClient) TeamMembers(teamIDs []string) ([]pagerduty.User, []pagerduty.APIObject, error) {
 	userListOpts := pagerduty.ListUsersOptions{}
 	userListOpts.Includes = []string{"contact_methods", "notification_rules"}
 	userListOpts.TeamIDs = teamIDs

@@ -1,4 +1,4 @@
-package clients
+package slack
 
 import (
 	"fmt"
@@ -70,11 +70,11 @@ func Init(cfg config.SlackConfig) (err error) {
 
 	slackInfoChannelName = cfg.InfoChannel
 
-	return LoadSlackMasterData()
+	return LoadMasterData()
 }
 
-// LoadSlackMasterData singleton master data to speed up
-func LoadSlackMasterData() (err error) {
+// LoadMasterData singleton master data to speed up
+func LoadMasterData() (err error) {
 	log.Debug("slack: loading masterdata...")
 
 	slackChannelsTemp, err := GetChannels()
@@ -137,8 +137,8 @@ func GetSlackGroup(slackGroupHandle string) (slack.UserGroup, error) {
 	return targetGroup, nil
 }
 
-// GetSlackUser delivers Slack User
-func GetSlackUser(pdUsers []pagerduty.User) ([]slack.User, error) {
+// MatchPDUsers returns slack users matching the given pagerduty users
+func MatchPDUsers(pdUsers []pagerduty.User) ([]slack.User, error) {
 	// if no pdUsers given, we don't need to filter
 	if pdUsers == nil {
 		log.Warn("empty PD user list given!")
@@ -152,8 +152,8 @@ func GetSlackUser(pdUsers []pagerduty.User) ([]slack.User, error) {
 	return userList, nil
 }
 
-// SetSlackGroupUser sets an array of Slack User to an Slack Group (found by name), returns true if noop
-func SetSlackGroupUser(jI *config.JobInfo, slackUsers []slack.User) (noChange bool, err error) {
+// AddToGroup sets an array of Slack User to an Slack Group (found by name), returns true if noop
+func AddToGroup(jI *config.JobInfo, slackUsers []slack.User) (noChange bool, err error) {
 	var bNoChange = true
 
 	// get the group we are interested in
@@ -209,7 +209,7 @@ func SetSlackGroupUser(jI *config.JobInfo, slackUsers []slack.User) (noChange bo
 	return bNoChange, nil
 }
 
-func DisableSlackGroup(jI *config.JobInfo) {
+func DisableGroup(jI *config.JobInfo) {
 	userGroup, err := defaultSlackClientUser.DisableUserGroup(jI.SlackGroupObject.ID)
 	if err != nil {
 		log.Errorf("slack: disabling slack user group %s[%s] failed: %s", jI.SlackGroupObject.Name, jI.SlackGroupObject.ID, err)

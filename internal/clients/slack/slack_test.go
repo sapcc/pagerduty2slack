@@ -1,4 +1,4 @@
-package clients
+package slack
 
 import (
 	"encoding/json"
@@ -85,7 +85,7 @@ func TestGetChannels(t *testing.T) {
 func TestGetSlackGroup(t *testing.T) {
 	testServer := setup(t)
 	defer testServer.Stop()
-	if err := LoadSlackMasterData(); err != nil {
+	if err := LoadMasterData(); err != nil {
 		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
 	}
 
@@ -99,7 +99,7 @@ func TestLoadSlackMasterData(t *testing.T) {
 	testServer := setup(t)
 	defer testServer.Stop()
 
-	assert.NoError(t, LoadSlackMasterData())
+	assert.NoError(t, LoadMasterData())
 	assert.NotEmpty(t, slackChannels)
 	assert.NotEmpty(t, slackUserList)
 	assert.NotEmpty(t, slackGrps)
@@ -112,7 +112,7 @@ func TestGetSlackUser(t *testing.T) {
 		{Profile: slack.UserProfile{Email: "max@mustermann.example.com"}},
 	}
 
-	actualUsers, err := GetSlackUser(pdUsers)
+	actualUsers, err := MatchPDUsers(pdUsers)
 
 	if assert.NoError(t, err) {
 		assert.Len(t, actualUsers, 1)
@@ -124,7 +124,7 @@ func TestSetSlackUserGroup(t *testing.T) {
 	testServer := setup(t)
 	defer testServer.Stop()
 
-	if err := LoadSlackMasterData(); err != nil {
+	if err := LoadMasterData(); err != nil {
 		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
 	}
 
@@ -144,7 +144,7 @@ func TestSetSlackUserGroup(t *testing.T) {
 		},
 	}
 	slackUsers := []slack.User{{ID: "W012A3CDE"}}
-	noChange, err := SetSlackGroupUser(jobInfo, slackUsers)
+	noChange, err := AddToGroup(jobInfo, slackUsers)
 
 	assert.NoError(t, err)
 	assert.False(t, noChange)
@@ -154,7 +154,7 @@ func TestSetSlackUserGroupNoChange(t *testing.T) {
 	testServer := setup(t)
 	defer testServer.Stop()
 
-	if err := LoadSlackMasterData(); err != nil {
+	if err := LoadMasterData(); err != nil {
 		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
 	}
 
@@ -177,7 +177,7 @@ func TestSetSlackUserGroupNoChange(t *testing.T) {
 		{ID: "W012A3CDE"},
 		{ID: "W07QCRPA4"},
 	}
-	noChange, err := SetSlackGroupUser(jobInfo, slackUsers)
+	noChange, err := AddToGroup(jobInfo, slackUsers)
 
 	assert.NoError(t, err)
 	assert.True(t, noChange)
@@ -187,7 +187,7 @@ func TestDisableSlackGroup(t *testing.T) {
 	testServer := setup(t)
 	defer testServer.Stop()
 
-	if err := LoadSlackMasterData(); err != nil {
+	if err := LoadMasterData(); err != nil {
 		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
 	}
 
@@ -195,7 +195,7 @@ func TestDisableSlackGroup(t *testing.T) {
 		SlackGroupObject: slack.UserGroup{ID: "S0615G0KT"},
 	}
 
-	DisableSlackGroup(jobInfo)
+	DisableGroup(jobInfo)
 	assert.NoError(t, jobInfo.Error)
 }
 

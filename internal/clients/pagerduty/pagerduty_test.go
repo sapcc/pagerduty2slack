@@ -1,4 +1,4 @@
-package clients
+package pagerduty
 
 import (
 	"bytes"
@@ -88,7 +88,7 @@ func TestFilterUserWithoutPhone(t *testing.T) {
 	for _, c := range testcases {
 		client, mock := setupPagerDuty(t)
 		mock.expect("/users", usersResponse(c.users...))
-		actual := client.PdFilterUserWithoutPhone(c.users)
+		actual := client.WithoutPhone(c.users)
 		assert.Equal(t, c.expected, len(actual))
 	}
 }
@@ -136,7 +136,7 @@ func TestGetPDTeamMembers(t *testing.T) {
 	mock.expect("/teams/team_admin", teamResult(team("Team Admin", "team_admin")))
 	mock.expect("/teams/team_support", teamResult(team("Team Support", "team_support")))
 
-	users, apiObjects, err := client.PdGetTeamMembers(teamIDs)
+	users, apiObjects, err := client.TeamMembers(teamIDs)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(users))
@@ -149,7 +149,7 @@ func TestGetPDTeamMembersError(t *testing.T) {
 
 	mock.expect("/users", apiNotFoundError())
 
-	users, apiObjects, err := client.PdGetTeamMembers(teamIDs)
+	users, apiObjects, err := client.TeamMembers(teamIDs)
 
 	assert.Error(t, err)
 	assert.Nil(t, users)

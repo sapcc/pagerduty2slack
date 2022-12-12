@@ -11,7 +11,8 @@ import (
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 
-	cfct "github.com/sapcc/pagerduty2slack/internal/clients"
+	"github.com/sapcc/pagerduty2slack/internal/clients/pagerduty"
+	"github.com/sapcc/pagerduty2slack/internal/clients/slack"
 	"github.com/sapcc/pagerduty2slack/internal/config"
 )
 
@@ -28,7 +29,7 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) (config.JobInfo, error)
 	log.Info(jI.JobName())
 
 	// find members of given group
-	pdC, err := cfct.PdNewClient(&jI.Cfg.Pagerduty)
+	pd, err := pagerduty.NewClient(&jI.Cfg.Pagerduty)
 	if err != nil {
 		return config.JobInfo{}, fmt.Errorf("adding members to slack groups failed: %w", err)
 	}
@@ -48,7 +49,7 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) (config.JobInfo, error)
 		jI.Error = fmt.Errorf(eS)
 	}
 
-	pdUsers, pdSchedules, err := pdC.PdListOnCallUsers(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].ObjectsToSync.PagerdutyObjectID, tfF, tfB, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.SyncStyle)
+	pdUsers, pdSchedules, err := pd.ListOnCallUsers(jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].ObjectsToSync.PagerdutyObjectID, tfF, tfB, jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.SyncStyle)
 	jI.PdObjects = pdSchedules
 	jI.PdObjectMember = pdUsers
 	if err != nil {
@@ -57,14 +58,14 @@ func addScheduleOnDutyMembersToGroups(jI config.JobInfo) (config.JobInfo, error)
 	}
 
 	// get all SLACK users, bcz. we need the SLACK user id and match them with the ldap users
-	jI.SlackGroupUser, err = cfct.GetSlackUser(pdUsers)
+	jI.SlackGroupUser, err = slack.MatchPDUsers(pdUsers)
 	if err != nil {
 		jI.Error = err
 		return jI, nil
 	}
 
 	// put ldap users which also have a slack account to our slack group (who's not in the ldap group is out)
-	if _, err = cfct.SetSlackGroupUser(&jI, jI.SlackGroupUser); err != nil {
+	if _, err = slack.AddToGroup(&jI, jI.SlackGroupUser); err != nil {
 		return config.JobInfo{}, fmt.Errorf("adding OnDuty members to slack group failed: %w", err)
 	}
 	return jI, nil
@@ -75,13 +76,13 @@ func addTeamMembersToGroups(jI config.JobInfo) config.JobInfo {
 	log.Info(jI.JobName())
 
 	// find members of given group
-	pdC, err := cfct.PdNewClient(&jI.Cfg.Pagerduty)
+	pd, err := pagerduty.NewClient(&jI.Cfg.Pagerduty)
 	if err != nil {
 		log.Error(fmt.Sprintf("PROGRAMMER FAIL > %s", err))
 		jI.Error = err
 		return jI
 	}
-	pdUsers, pdTeams, err := pdC.PdGetTeamMembers(jI.PagerDutyIDs())
+	pdUsers, pdTeams, err := pd.TeamMembers(jI.PagerDutyIDs())
 	jI.PdObjects = pdTeams
 	jI.PdObjectMember = pdUsers
 	if err != nil {
@@ -89,27 +90,26 @@ func addTeamMembersToGroups(jI config.JobInfo) config.JobInfo {
 		return jI
 	}
 
-	pdUsersWithoutPhone := pdC.PdFilterUserWithoutPhone(pdUsers)
+	pdUsersWithoutPhone := pd.WithoutPhone(pdUsers)
 	for _, i2 := range pdUsersWithoutPhone {
 		log.Warnf("User without Fon: %s %s", i2.Name, i2.HTMLURL)
 	}
 
 	// get all SLACK users, bcz. we need the SLACK user id and match them with the ldap users
-	slackUserFilteredList, err := cfct.GetSlackUser(pdUsers)
+	slackUserFilteredList, err := slack.MatchPDUsers(pdUsers)
 	if err != nil {
 		jI.Error = err
 		return jI
 	}
 
 	if len(slackUserFilteredList) == 0 && jI.Cfg.Jobs.ScheduleSync[jI.JobCounter].SyncOptions.DisableSlackHandleTemporaryIfNoneOnShift {
-		cfct.DisableSlackGroup(&jI)
+		slack.DisableGroup(&jI)
 	} else {
-		if _, err := cfct.SetSlackGroupUser(&jI, slackUserFilteredList); err != nil {
+		if _, err := slack.AddToGroup(&jI, slackUserFilteredList); err != nil {
 			log.Warnf("updating slack user group failed: %s", err.Error())
 			return jI
 		}
 	}
-
 	return jI
 }
 
@@ -134,7 +134,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err = cfct.Init(cfg.Slack)
+	err = slack.Init(cfg.Slack)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func main() {
 	c := cron.New(cron.WithLocation(time.UTC))
 
 	_, err = c.AddFunc("0 * * * *", func() {
-		if err := cfct.LoadSlackMasterData(); err != nil {
+		if err := slack.LoadMasterData(); err != nil {
 			log.Warnf("loading slack masterdata failed: %s", err.Error())
 		}
 	})
@@ -169,7 +169,7 @@ func main() {
 				log.Warnf("adding OnDuty members to slack failed: %s", err.Error())
 				return
 			}
-			if err = cfct.PostMessage(updatesJobInfo.GetSlackInfoMessage()); err != nil {
+			if err = slack.PostMessage(updatesJobInfo.GetSlackInfoMessage()); err != nil {
 				log.Warnf("posting update to slack failed: %s", err.Error())
 			}
 		})
@@ -185,7 +185,7 @@ func main() {
 			JobType:    config.PdTeamSync,
 		}
 		cronEntryID, err := c.AddFunc(mj.CrontabExpressionForRepetition, func() {
-			err := cfct.PostMessage(addTeamMembersToGroups(jI).GetSlackInfoMessage())
+			err := slack.PostMessage(addTeamMembersToGroups(jI).GetSlackInfoMessage())
 			if err != nil {
 				log.Error(err)
 			}
