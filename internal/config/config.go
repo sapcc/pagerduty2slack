@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -97,16 +96,16 @@ type SyncObjects struct {
 // NewConfig reads the configuration from the given filePath.
 func NewConfig(configFilePath string) (cfg Config, err error) {
 	if configFilePath == "" {
-		return cfg, errors.New("path to configuration file not provided")
+		return cfg, fmt.Errorf("path to configuration file not provided")
 	}
 
 	cfgBytes, err := os.ReadFile(configFilePath)
 	if err != nil {
-		return cfg, fmt.Errorf("read configuration file: %s", err.Error())
+		return cfg, fmt.Errorf("reading configuration file failed: %w", err)
 	}
 	err = yaml.Unmarshal(cfgBytes, &cfg)
 	if err != nil {
-		return cfg, fmt.Errorf("parse configuration: %s", err.Error())
+		return cfg, fmt.Errorf("parsing configuration failed: %w", err)
 	}
 	return cfg, nil
 }

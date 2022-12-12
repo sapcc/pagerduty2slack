@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/PagerDuty/go-pagerduty"
-	"github.com/pkg/errors"
 	"github.com/sapcc/pulsar/pkg/util"
 	log "github.com/sirupsen/logrus"
 
@@ -26,7 +25,7 @@ type PdClient struct {
 func PdNewClient(cfg *config.PagerdutyConfig) (*PdClient, error) {
 	pagerdutyClient := pagerduty.NewClient(cfg.AuthToken)
 	if pagerdutyClient == nil {
-		return nil, errors.New("failed to initialize pagerduty client")
+		return nil, fmt.Errorf("pagerduty: failed to initialize client")
 	}
 
 	c := &PdClient{
@@ -36,7 +35,7 @@ func PdNewClient(cfg *config.PagerdutyConfig) (*PdClient, error) {
 
 	defaultUser, err := c.PdGetUserByEmail(cfg.APIUser)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error getting default pagerduty user with email %s", cfg.APIUser)
+		return nil, fmt.Errorf("pagerduty: getting default user by email '%s' failed: %w", cfg.APIUser, err)
 	}
 	c.apiUserInstance = defaultUser
 
@@ -196,7 +195,7 @@ func (c *PdClient) PdGetTeamMembers(teamIDs []string) ([]pagerduty.User, []pager
 	for _, id := range teamIDs {
 		response, err := c.pagerdutyClient.GetTeamWithContext(context.TODO(), id)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "team not found")
+			return nil, nil, fmt.Errorf("pagerduty: team not found: %w", err)
 		}
 		teamObjects = append(teamObjects, response.APIObject)
 	}
@@ -207,14 +206,14 @@ func (c *PdClient) PdGetTeamMembers(teamIDs []string) ([]pagerduty.User, []pager
 func (c *PdClient) listOnCallUsers(onCalls []pagerduty.OnCall) (users []pagerduty.User) {
 	opts := pagerduty.GetUserOptions{Includes: []string{"contact_methods"}}
 
-	distinctOnCalls := make(map[string]struct{})
+	distinctUsers := make(map[string]struct{})
 	for _, u := range onCalls {
-		if _, ok := distinctOnCalls[u.User.ID]; ok {
+		if _, ok := distinctUsers[u.User.ID]; ok {
 			// duplicate user
 			log.Debugf("pagerduty: skipping duplicate onCall user %s", u.User.ID)
 			continue
 		}
-		distinctOnCalls[u.User.ID] = struct{}{}
+		distinctUsers[u.User.ID] = struct{}{}
 
 		user, err := c.pagerdutyClient.GetUserWithContext(context.TODO(), u.User.ID, opts)
 		if err != nil {
@@ -226,7 +225,6 @@ func (c *PdClient) listOnCallUsers(onCalls []pagerduty.OnCall) (users []pagerdut
 		}
 		users = append(users, *user)
 	}
-
 	return users
 }
 

@@ -148,7 +148,7 @@ func GetSlackUser(pdUsers []pagerduty.User) ([]slack.User, error) {
 	// get all SLACK User Ids which are in our PD Group - some people are not in slack
 	userList := matchPDToSlackUsers(pdUsers, slackUserList)
 
-	log.Info(fmt.Printf("%d user in PD user group | %d in SLACK at all | %d user will be in SLACK group\n", len(pdUsers), len(slackUserList), len(userList)))
+	log.Infof("slack: #%d user(s) in PD user group | #%d user(s) in all of slack | #%d user(s) will be in slack group\n", len(pdUsers), len(slackUserList), len(userList))
 	return userList, nil
 }
 
