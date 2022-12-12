@@ -16,25 +16,35 @@ import (
 	"github.com/sapcc/pagerduty2slack/internal/config"
 )
 
+type expectation struct {
+	path     string
+	response *http.Response
+	query    string
+}
+
 type pagerDutyMock struct {
-	DoMock func(req *http.Request) (*http.Response, error)
+	t            *testing.T
+	expectations map[string]*expectation
+	DoMock       func(req *http.Request) (*http.Response, error)
 }
 
 func (m *pagerDutyMock) Do(req *http.Request) (*http.Response, error) {
-	return doMock(req)
+	return m.doMock(req)
 }
 
 func TestGetUserByEmail(t *testing.T) {
-	mock := setupPagerDuty()
-	actual, err := mock.PdGetUserByEmail("admin@test.com")
+	client, mock := setupPagerDuty(t)
+
+	mock.expectWithQuery("/users", "admin@test.com", usersResponse(user("admin", "0001", true, true)))
+	actual, err := client.PdGetUserByEmail("admin@test.com")
 
 	assert.NoError(t, err)
-	assert.Equal(t, "admin@test.com", actual.Email)
+	if assert.NotNil(t, actual) {
+		assert.Equal(t, "admin@test.com", actual.Email)
+	}
 }
 
 func TestFilterUserWithoutPhone(t *testing.T) {
-	mock := setupPagerDuty()
-
 	type filterPhoneTestcase struct {
 		users    []pagerduty.User
 		expected int
@@ -43,46 +53,48 @@ func TestFilterUserWithoutPhone(t *testing.T) {
 	testcases := []filterPhoneTestcase{
 		{
 			users: []pagerduty.User{
-				createMockUser("one", "1", true, true),
-				createMockUser("two", "2", true, false),
-				createMockUser("three", "3", true, true),
+				user("one", "1", true, true),
+				user("two", "2", true, false),
+				user("three", "3", true, true),
 			},
 			expected: 1,
 		},
 		{
 			users: []pagerduty.User{
-				createMockUser("one", "1", true, true),
-				createMockUser("two", "2", true, true),
-				createMockUser("three", "3", true, true),
+				user("one", "1", true, true),
+				user("two", "2", true, true),
+				user("three", "3", true, true),
 			},
 			expected: 0,
 		},
 		{
 			users: []pagerduty.User{
-				createMockUser("one", "1", true, false),
-				createMockUser("two", "2", true, false),
-				createMockUser("three", "3", true, false),
+				user("one", "1", true, false),
+				user("two", "2", true, false),
+				user("three", "3", true, false),
 			},
 			expected: 3,
 		},
 		{
 			users: []pagerduty.User{
-				createMockUser("one", "1", true, false),
-				createMockUser("two", "2", true, false),
-				createMockUser("three", "3", false, false),
+				user("one", "1", true, false),
+				user("two", "2", true, false),
+				user("three", "3", false, false),
 			},
 			expected: 3,
 		},
 	}
 
 	for _, c := range testcases {
-		actual := mock.PdFilterUserWithoutPhone(c.users)
+		client, mock := setupPagerDuty(t)
+		mock.expect("/users", usersResponse(c.users...))
+		actual := client.PdFilterUserWithoutPhone(c.users)
 		assert.Equal(t, c.expected, len(actual))
 	}
 }
 
 func TestGetUser(t *testing.T) {
-	mock := setupPagerDuty()
+	client, mock := setupPagerDuty(t)
 
 	type testCase struct {
 		apiObject    pagerduty.APIObject
@@ -104,16 +116,27 @@ func TestGetUser(t *testing.T) {
 	}
 
 	for _, test := range testCases {
-		actual := mock.getUser(test.apiObject)
+		mock.expect("/users/"+test.expectedID, userResponse(user(test.expectedName, test.expectedID, true, true)))
+
+		actual := client.getUser(test.apiObject)
 		assert.Equal(t, test.expectedID, actual.ID)
 		assert.Equal(t, test.expectedName, actual.Name)
 	}
 }
 
 func TestGetPDTeamMembers(t *testing.T) {
-	mock := setupPagerDuty()
+	client, mock := setupPagerDuty(t)
 	teamIDs := []string{"team_admin", "team_support"}
-	users, apiObjects, err := mock.PdGetTeamMembers(teamIDs)
+
+	mock.expect("/users", usersResponse(
+		userWithTeam("admin", "0123", "team_admin", true, true),
+		userWithTeam("user01", "0002", "team_support", true, true),
+		userWithTeam("user02", "0003", "team_support", true, true),
+	))
+	mock.expect("/teams/team_admin", teamResult(team("Team Admin", "team_admin")))
+	mock.expect("/teams/team_support", teamResult(team("Team Support", "team_support")))
+
+	users, apiObjects, err := client.PdGetTeamMembers(teamIDs)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(users))
@@ -121,9 +144,12 @@ func TestGetPDTeamMembers(t *testing.T) {
 }
 
 func TestGetPDTeamMembersError(t *testing.T) {
-	mock := setupPagerDuty()
+	client, mock := setupPagerDuty(t)
 	teamIDs := []string{"team_error", "team_support"}
-	users, apiObjects, err := mock.PdGetTeamMembers(teamIDs)
+
+	mock.expect("/users", apiNotFoundError())
+
+	users, apiObjects, err := client.PdGetTeamMembers(teamIDs)
 
 	assert.Error(t, err)
 	assert.Nil(t, users)
@@ -131,12 +157,23 @@ func TestGetPDTeamMembersError(t *testing.T) {
 }
 
 func TestListOnCallFinal(t *testing.T) {
-	mock := setupPagerDuty()
+	client, mock := setupPagerDuty(t)
 	scheduleIDs := []string{"1000", "2000"}
 	since := 5 * time.Hour
 	until := 5 * time.Hour
 
-	users, schedules, err := mock.pdListOnCallUseFinal(scheduleIDs, since, until)
+	mock.expect("/users/0123", userResponse(user("admin", "0123", true, true)))
+	mock.expect("/users/0001", userResponse(user("user01", "0001", true, true)))
+	mock.expect("/users/0002", userResponse(user("user02", "0002", true, true)))
+	mock.expect("/oncalls", onCallsResult(
+		onCall(schedule("Weekly OnCall Rotation", "1000"), policy("Admin", "100"), user("admin", "0123", true, true)),
+		onCall(schedule("Daily OnCall Rotation", "2000"), policy("Support", "200"), user("user01", "0001", true, true)),
+		onCall(schedule("Daily OnCall Rotation", "2000"), policy("Support", "200"), user("user02", "0002", true, true))))
+
+	mock.expect("/schedules/1000", scheduleResponse(schedule("Weekly OnCallRotation", "1000")))
+	mock.expect("/schedules/2000", scheduleResponse(schedule("Daily OnCallRotation", "2000")))
+
+	users, schedules, err := client.pdListOnCallUseFinal(scheduleIDs, since, until)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(users))
@@ -144,85 +181,57 @@ func TestListOnCallFinal(t *testing.T) {
 }
 
 func TestListOnCallUseAllActiveLayers(t *testing.T) {
-	mock := setupPagerDuty()
-	scheduleIDs := []string{"schedule-with-layers", "schedule-with-layers-and-override"}
+	client, mock := setupPagerDuty(t)
+	scheduleIDs := []string{"3001", "4001"}
 	since := 5 * time.Hour
 	until := 5 * time.Hour
 
-	users, schedules, err := mock.pdListOnCallUseLayers(scheduleIDs, since, until, config.AllActiveLayers)
+	mock.expect("/users/0001", userResponse(user("user01", "0001", true, true)))
+	mock.expect("/users/0002", userResponse(user("user02", "0002", true, true)))
+	mock.expect("/users/0003", userResponse(user("user03", "0003", true, true)))
+	mock.expect("/oncalls", onCallsResult(
+		onCall(scheduleWithLayer("Schedule With Layers And Override", "3001", user("user02", "0002", true, true)), policy("Layer 2", "301"), user("user01", "0001", true, true)),
+		onCall(scheduleWithLayer("Schedule With Layers", "4001", user("user02", "0002", true, true)), policy("Layer Override", "401"), user("user02", "0002", true, true)),
+	))
+	mock.expect("/schedules/3001", scheduleResponse(scheduleWithLayer("Schedule With Layers And Override", "3001", user("user02", "0002", true, true))))
+	mock.expect("/schedules/3001/overrides", overrideResponse(override("0003")))
+	mock.expect("/schedules/4001", scheduleResponse(scheduleWithLayer("Schedule With Layers", "4001", user("user02", "0002", true, true))))
+	mock.expect("/schedules/4001/overrides", noOverridesResponse())
+
+	users, schedules, err := client.pdListOnCallUseLayers(scheduleIDs, since, until, config.AllActiveLayers)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(users))
 	assert.Equal(t, 2, len(schedules))
 }
 
-func setupPagerDuty() *PdClient {
+func setupPagerDuty(t *testing.T) (client *PdClient, mock *pagerDutyMock) {
 	cfg := config.PagerdutyConfig{AuthToken: "test", APIUser: "test@company.com"}
-	client := pagerduty.NewClient("")
-	client.HTTPClient = &pagerDutyMock{}
-	return &PdClient{cfg: &cfg, pagerdutyClient: client}
+	c := pagerduty.NewClient("")
+	mock = &pagerDutyMock{t: t, expectations: make(map[string]*expectation)}
+	c.HTTPClient = mock
+	return &PdClient{cfg: &cfg, pagerdutyClient: c}, mock
 }
 
-func doMock(req *http.Request) (resp *http.Response, err error) {
-	pathParts := strings.Split(req.URL.Path, "/")
-	route := pathParts[1]
-	var id string
-	if len(pathParts) == 3 {
-		id = pathParts[2]
-	}
+func (m *pagerDutyMock) expect(path string, response *http.Response) {
+	m.expectWithQuery(path, "", response)
+}
 
-	switch route {
-	case "users":
-		if id == "" { //ListUser request
-			result := pagerduty.ListUsersResponse{}
-			if req.URL.Query().Get("query") == "admin@test.com" {
-				result.Users = append(result.Users, createMockUser("Admin", "0123", true, true))
-			} else {
-				result.Users = createMockUsersList()
-			}
-			return createResponse(http.StatusOK, result), nil
-		} else {
-			if id != "" {
-				result := make(map[string]pagerduty.User)
-				result["user"] = pagerduty.User{
-					Name:      "BackendResponse",
-					Email:     "test@test.com",
-					APIObject: pagerduty.APIObject{ID: id, Type: "user"},
-				}
-				return createResponse(http.StatusOK, result), nil
-			} else {
-				result := pagerduty.APIError{
-					StatusCode: http.StatusNotFound,
-					APIError:   pagerduty.NullAPIErrorObject{Valid: true, ErrorObject: pagerduty.APIErrorObject{Code: 2001, Message: "Not Found"}},
-				}
-				return createResponse(http.StatusNotFound, result), nil
-			}
-		}
-	case "teams":
-		if id == "team_error" {
-			result := pagerduty.APIError{
-				StatusCode: http.StatusNotFound,
-				APIError:   pagerduty.NullAPIErrorObject{Valid: true, ErrorObject: pagerduty.APIErrorObject{Code: 6001, Message: "Team Not Found"}},
-			}
-			return createResponse(http.StatusNotFound, result), nil
-		} else {
-			result := make(map[string]pagerduty.Team)
-			result["team"] = createMockTeam(pathParts[2])
-			return createResponse(http.StatusOK, result), nil
-		}
-	case "oncalls":
-		return createResponse(http.StatusOK, createMockOnCalls()), nil
-	case "schedules":
-		if len(pathParts) == 4 {
-			if pathParts[2] == "schedule-with-layers-and-override" && pathParts[3] == "overrides" {
-				return createResponse(http.StatusOK, createMockOverride()), nil
-			}
-			return createResponse(http.StatusOK, pagerduty.ListOverridesResponse{Overrides: []pagerduty.Override{}}), nil
-		}
-		if id != "" {
-			return createResponse(http.StatusOK, createMockSchedule(id)), nil
-		}
+func (m *pagerDutyMock) expectWithQuery(path, query string, response *http.Response) {
+	if _, ok := m.expectations[path]; ok {
+		m.t.Fatalf("expecation for %s already set", path)
 	}
+	e := &expectation{path: path, query: query, response: response}
+	m.expectations[path] = e
+}
+
+func (m *pagerDutyMock) doMock(req *http.Request) (resp *http.Response, err error) {
+	pathParts := strings.Split(req.URL.Path, "/")
+	path := strings.Join(pathParts, "/")
+	if exp, ok := m.expectations[path]; ok {
+		return exp.response, nil
+	}
+	m.t.Fatalf("expectation for '%s' is missing", path)
 	return createResponse(http.StatusNotImplemented, nil), nil
 }
 
@@ -242,11 +251,23 @@ func createResponse(statusCode int, result any) *http.Response {
 		StatusCode: statusCode}
 }
 
-func createMockUser(name, id string, email, phone bool) pagerduty.User {
-	return createMockUserWithTeam(name, id, "default", email, phone)
+func userResponse(user pagerduty.User) *http.Response {
+	result := make(map[string]pagerduty.User)
+	result["user"] = user
+	return createResponse(http.StatusOK, result)
 }
 
-func createMockUserWithTeam(name, id, teamid string, email, phone bool) pagerduty.User {
+func usersResponse(users ...pagerduty.User) *http.Response {
+	return createResponse(http.StatusOK, pagerduty.ListUsersResponse{
+		Users: users,
+	})
+}
+
+func user(name, id string, email, phone bool) pagerduty.User {
+	return userWithTeam(name, id, "default", email, phone)
+}
+
+func userWithTeam(name, id, teamid string, email, phone bool) pagerduty.User {
 	user := pagerduty.User{
 		Name:      name,
 		Email:     fmt.Sprintf("%s@test.com", strings.ToLower(name)),
@@ -269,75 +290,62 @@ func createMockUserWithTeam(name, id, teamid string, email, phone bool) pagerdut
 	return user
 }
 
-func createMockUsersList() []pagerduty.User {
-	users := []pagerduty.User{}
-	users = append(users, createMockUserWithTeam("Admin", "0123", "team_admin", true, true))
-	users = append(users, createMockUserWithTeam("User1", "001", "team_support", true, true))
-	users = append(users, createMockUserWithTeam("User2", "002", "team_support", true, true))
-	return users
+func teamResult(team pagerduty.Team) *http.Response {
+	return createResponse(http.StatusOK, map[string]pagerduty.Team{"team": team})
 }
 
-func createMockTeam(id string) pagerduty.Team {
-	switch id {
-	case "team_admin":
-		return pagerduty.Team{Name: "Admin Team", APIObject: pagerduty.APIObject{ID: id}}
-	case "team_support":
-		return pagerduty.Team{Name: "Admin Team", APIObject: pagerduty.APIObject{ID: id}}
+func team(name, id string) pagerduty.Team {
+	return pagerduty.Team{Name: name, APIObject: pagerduty.APIObject{ID: id}}
+}
+
+func onCallsResult(oncalls ...pagerduty.OnCall) *http.Response {
+	return createResponse(http.StatusOK, pagerduty.ListOnCallsResponse{
+		OnCalls: oncalls,
+	})
+}
+
+func onCall(schedule pagerduty.Schedule, policy pagerduty.EscalationPolicy, user pagerduty.User) pagerduty.OnCall {
+	return pagerduty.OnCall{Schedule: schedule, EscalationPolicy: policy, User: user}
+}
+
+func scheduleResponse(schedule pagerduty.Schedule) *http.Response {
+	return createResponse(http.StatusOK, map[string]pagerduty.Schedule{
+		"schedule": schedule,
+	})
+}
+
+func schedule(name, id string) pagerduty.Schedule {
+	return pagerduty.Schedule{APIObject: pagerduty.APIObject{ID: id}, Name: name}
+}
+
+func scheduleWithLayer(name, id string, users ...pagerduty.User) pagerduty.Schedule {
+	var entries []pagerduty.RenderedScheduleEntry
+	for _, u := range users {
+		entries = append(entries, pagerduty.RenderedScheduleEntry{User: u.APIObject})
 	}
-	return pagerduty.Team{}
+	return pagerduty.Schedule{APIObject: pagerduty.APIObject{ID: id}, Name: name, ScheduleLayers: []pagerduty.ScheduleLayer{{RenderedScheduleEntries: entries}}}
 }
 
-func createMockOnCalls() pagerduty.ListOnCallsResponse {
-	oncalls := []pagerduty.OnCall{}
-
-	oncalls = append(oncalls, pagerduty.OnCall{
-		User:             pagerduty.User{APIObject: pagerduty.APIObject{ID: "0123"}},
-		EscalationLevel:  1,
-		EscalationPolicy: pagerduty.EscalationPolicy{Name: "Admin", APIObject: pagerduty.APIObject{ID: "100"}},
-		Schedule:         pagerduty.Schedule{Name: "Weekly OnCall Rotation", APIObject: pagerduty.APIObject{ID: "1000"}}})
-	oncalls = append(oncalls, pagerduty.OnCall{
-		User:             pagerduty.User{APIObject: pagerduty.APIObject{ID: "001"}},
-		EscalationLevel:  2,
-		EscalationPolicy: pagerduty.EscalationPolicy{Name: "Support", APIObject: pagerduty.APIObject{ID: "200"}},
-		Schedule:         pagerduty.Schedule{Name: "Daily OnCall Rotation", APIObject: pagerduty.APIObject{ID: "2000"}}})
-	oncalls = append(oncalls, pagerduty.OnCall{
-		User:             pagerduty.User{APIObject: pagerduty.APIObject{ID: "002"}},
-		EscalationLevel:  2,
-		EscalationPolicy: pagerduty.EscalationPolicy{Name: "Support", APIObject: pagerduty.APIObject{ID: "200"}}, Schedule: pagerduty.Schedule{Name: "Daily OnCall Rotation", APIObject: pagerduty.APIObject{ID: "2000"}}})
-	return pagerduty.ListOnCallsResponse{OnCalls: oncalls}
+func overrideResponse(override pagerduty.Override) *http.Response {
+	return createResponse(http.StatusOK, pagerduty.ListOverridesResponse{Overrides: []pagerduty.Override{override}})
 }
 
-type scheduleResponse struct {
-	Schedule pagerduty.Schedule `json:"schedule"`
+func noOverridesResponse() *http.Response {
+	return createResponse(http.StatusOK, pagerduty.ListOverridesResponse{Overrides: []pagerduty.Override{}})
 }
 
-func createMockSchedule(id string) scheduleResponse {
-	resp := scheduleResponse{
-		Schedule: pagerduty.Schedule{
-			Name:      "dummy",
-			APIObject: pagerduty.APIObject{ID: id},
-		},
+func override(id string) pagerduty.Override {
+	return pagerduty.Override{
+		User: pagerduty.APIObject{ID: id},
 	}
-	if id == "schedule-with-layers" || id == "schedule-with-layers-and-override" {
-		resp.Schedule.ScheduleLayers = []pagerduty.ScheduleLayer{
-			{
-				RenderedScheduleEntries: []pagerduty.RenderedScheduleEntry{
-					{User: pagerduty.APIObject{
-						ID: "001",
-					}},
-				},
-			},
-		}
-	}
-	return resp
 }
 
-func createMockOverride() pagerduty.ListOverridesResponse {
-	return pagerduty.ListOverridesResponse{
-		Overrides: []pagerduty.Override{
-			{
-				User: pagerduty.APIObject{ID: "002"},
-			},
-		},
-	}
+func policy(name, id string) pagerduty.EscalationPolicy {
+	return pagerduty.EscalationPolicy{APIObject: pagerduty.APIObject{ID: id}, Name: name}
+}
+
+func apiNotFoundError() *http.Response {
+	return createResponse(http.StatusNotFound, pagerduty.APIError{
+		StatusCode: http.StatusNotFound,
+		APIError:   pagerduty.NullAPIErrorObject{Valid: true, ErrorObject: pagerduty.APIErrorObject{Code: 2001, Message: "Not Found"}}})
 }
