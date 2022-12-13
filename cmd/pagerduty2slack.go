@@ -14,7 +14,7 @@ import (
 	pagerdutyclient "github.com/sapcc/pagerduty2slack/internal/clients/pagerduty"
 	slackclient "github.com/sapcc/pagerduty2slack/internal/clients/slack"
 	"github.com/sapcc/pagerduty2slack/internal/config"
-	"github.com/sapcc/pagerduty2slack/internal/manager"
+	"github.com/sapcc/pagerduty2slack/internal/jobs"
 )
 
 var opts config.Config
@@ -48,8 +48,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	m := manager.New(pdClient, slackClient)
-
 	c := cron.New(cron.WithLocation(time.UTC))
 	_, err = c.AddFunc("0 * * * *", func() {
 		if err := slackClient.LoadMasterData(); err != nil {
@@ -61,46 +59,47 @@ func main() {
 	}
 
 	//member sync jobs
-	for jobCounter, mj := range cfg.Jobs.ScheduleSync {
-		jI := config.JobInfo{
-			Cfg:        cfg,
-			JobCounter: jobCounter,
-			JobType:    config.PdScheduleSync,
+	for _, s := range cfg.Jobs.ScheduleSync {
+		job, err := jobs.NewScheduleSyncJob(s, !cfg.Global.Write, pdClient, slackClient)
+		if err != nil {
+			log.Fatalf("creating job to sync '%s' failed: %s", s.ObjectsToSync.SlackGroupHandle, err.Error())
 		}
-		cronEntryID, err := c.AddFunc(mj.CrontabExpressionForRepetition, func() {
-			updatesJobInfo, err := m.AddScheduleOnDutyMembersToGroups(jI)
+
+		_, err = c.AddFunc(s.CrontabExpressionForRepetition, func() {
+			err := job.Run()
 			if err != nil {
 				log.Warnf("adding OnDuty members to slack failed: %s", err.Error())
 				return
 			}
-			if err = slackClient.PostMessage(updatesJobInfo.GetSlackInfoMessage()); err != nil {
+			if err = jobs.PostInfoMessage(slackClient, job); err != nil {
 				log.Warnf("posting update to slack failed: %s", err.Error())
 			}
 		})
-		jI.CronJobID = cronEntryID
-		jI.CronObject = c
-		jI.Error = err
+		if err != nil {
+			log.Fatalf("failed to create job: %s", err.Error())
+		}
 	}
 	//group sync jobs
-	for jobCounter, mj := range cfg.Jobs.TeamSync {
-		jI := config.JobInfo{
-			Cfg:        cfg,
-			JobCounter: jobCounter,
-			JobType:    config.PdTeamSync,
+	for _, t := range cfg.Jobs.TeamSync {
+		job, err := jobs.NewTeamSyncJob(t, !cfg.Global.Write, pdClient, slackClient)
+		if err != nil {
+			log.Fatalf("creating job to sync '%s' failed: %s", t.ObjectsToSync.SlackGroupHandle, err.Error())
 		}
-		cronEntryID, err := c.AddFunc(mj.CrontabExpressionForRepetition, func() {
-			err := slackClient.PostMessage(m.AddTeamMembersToGroups(jI).GetSlackInfoMessage())
+		_, err = c.AddFunc(t.CrontabExpressionForRepetition, func() {
+			err := job.Run()
 			if err != nil {
-				log.Error(err)
+				log.Warnf("adding group members to slack failed: %s", err.Error())
+				return
+			}
+			if err = jobs.PostInfoMessage(slackClient, job); err != nil {
+				log.Warnf("posting update to slack failed: %s", err.Error())
 			}
 		})
-		jI.CronJobID = cronEntryID
-		jI.CronObject = c
-		jI.Error = err
+		if err != nil {
+			log.Fatalf("failed to schedule job: %s", err)
+		}
 	}
 
-	//b, _ := cfct.NewEventBot()
-	//go b.StartListening()
 	go c.Start()
 	defer c.Stop()
 
@@ -115,7 +114,6 @@ func main() {
 				c.Entry(e.ID).WrappedJob.Run()
 			}
 		}
-		//informSlack(&cfg, m, "JobList")
 
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)

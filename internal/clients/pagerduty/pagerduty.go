@@ -61,7 +61,6 @@ func (c *PDClient) PdGetUserByEmail(email string) (*pagerduty.User, error) {
 // WithoutPhone gives all User without a phone number set
 func (c *PDClient) WithoutPhone(users []pagerduty.User) []pagerduty.User {
 	noPhoneUsers := []pagerduty.User{}
-
 	for _, user := range users {
 		hasPhone := false
 		for _, c := range user.ContactMethods {
@@ -140,7 +139,7 @@ func (c *PDClient) pdListOnCallUseLayers(scheduleIDs []string, since, until offs
 						users = append(users, c.getUser(o.User))
 					}
 				}
-				log.Debugf("pagerduty: handled overrides for  schedule%s[%s]", schedule.Name, schedule.ID)
+				log.Debugf("pagerduty: handled overrides for schedule%s[%s]", schedule.Name, schedule.ID)
 				// if exist and we do not need the other layers - jump to next schedule
 				if layerSyncStyle == config.OverridesOnlyIfThere {
 					continue

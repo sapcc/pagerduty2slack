@@ -56,7 +56,7 @@ func setup(t *testing.T) (*SlackClient, *slacktest.Server) {
 	cfg := &config.SlackConfig{
 		UserSecurityToken: "TEST_TOKEN",
 		BotSecurityToken:  "TEST_TOKEN",
-		InfoChannel:       "general",
+		InfoChannelID:     "general",
 	}
 	var err error
 	apiURLOption := slack.OptionAPIURL(testServer.GetAPIURL())
@@ -71,9 +71,9 @@ func setup(t *testing.T) (*SlackClient, *slacktest.Server) {
 	}
 
 	client := &SlackClient{
-		botClient:       botMock,
-		userClient:      userMock,
-		infoChannelName: cfg.InfoChannel,
+		botClient:     botMock,
+		userClient:    userMock,
+		infoChannelID: cfg.InfoChannelID,
 	}
 
 	if err := client.LoadMasterData(); err != nil {
@@ -81,16 +81,6 @@ func setup(t *testing.T) (*SlackClient, *slacktest.Server) {
 	}
 
 	return client, testServer
-}
-
-func TestGetChannels(t *testing.T) {
-	cut, testServer := setup(t)
-	defer testServer.Stop()
-
-	channels, err := cut.GetChannels()
-	if assert.NoError(t, err) {
-		assert.NotEmpty(t, channels)
-	}
 }
 
 func TestGetSlackGroup(t *testing.T) {
@@ -108,7 +98,7 @@ func TestLoadSlackMasterData(t *testing.T) {
 	defer testServer.Stop()
 
 	assert.NoError(t, cut.LoadMasterData())
-	assert.NotEmpty(t, cut.channels)
+	assert.NotNil(t, cut.infoChannel)
 	assert.NotEmpty(t, cut.users)
 	assert.NotEmpty(t, cut.groups)
 }
@@ -133,23 +123,8 @@ func TestSetSlackUserGroup(t *testing.T) {
 	cut, testServer := setup(t)
 	defer testServer.Stop()
 
-	jobInfo := &config.JobInfo{JobType: config.PdTeamSync,
-		Cfg: config.Config{
-			Jobs: config.JobsConfig{
-				TeamSync: []config.PagerdutyTeamToSlackGroup{
-					{
-						ObjectsToSync: config.SyncObjects{
-							SlackGroupHandle: "admins"},
-					},
-				},
-			},
-			Global: config.GlobalConfig{
-				Write: true,
-			},
-		},
-	}
 	slackUsers := []slack.User{{ID: "W012A3CDE"}}
-	noChange, err := cut.AddToGroup(jobInfo, slackUsers)
+	noChange, err := cut.AddToGroup("admins", slackUsers, false)
 
 	assert.NoError(t, err)
 	assert.False(t, noChange)
@@ -159,26 +134,11 @@ func TestSetSlackUserGroupNoChange(t *testing.T) {
 	cut, testServer := setup(t)
 	defer testServer.Stop()
 
-	jobInfo := &config.JobInfo{JobType: config.PdTeamSync,
-		Cfg: config.Config{
-			Jobs: config.JobsConfig{
-				TeamSync: []config.PagerdutyTeamToSlackGroup{
-					{
-						ObjectsToSync: config.SyncObjects{
-							SlackGroupHandle: "admins"},
-					},
-				},
-			},
-			Global: config.GlobalConfig{
-				Write: false,
-			},
-		},
-	}
 	slackUsers := []slack.User{
 		{ID: "W012A3CDE"},
 		{ID: "W07QCRPA4"},
 	}
-	noChange, err := cut.AddToGroup(jobInfo, slackUsers)
+	noChange, err := cut.AddToGroup("admins", slackUsers, false)
 
 	assert.NoError(t, err)
 	assert.True(t, noChange)
@@ -188,12 +148,8 @@ func TestDisableSlackGroup(t *testing.T) {
 	cut, testServer := setup(t)
 	defer testServer.Stop()
 
-	jobInfo := &config.JobInfo{
-		SlackGroupObject: slack.UserGroup{ID: "S0615G0KT"},
-	}
-
-	cut.DisableGroup(jobInfo)
-	assert.NoError(t, jobInfo.Error)
+	err := cut.DisableGroup("S0615G0KT")
+	assert.NoError(t, err)
 }
 
 func (sd *slackTestData) createListConversationsHandler(w http.ResponseWriter, r *http.Request) {

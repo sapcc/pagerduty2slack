@@ -20,13 +20,12 @@ const (
 )
 
 type SlackClient struct {
-	botClient       *slack.Client
-	userClient      *slack.Client
-	channels        []slack.Channel
-	users           []slack.User
-	groups          []slack.UserGroup
-	infoChannel     slack.Channel
-	infoChannelName string
+	botClient     *slack.Client
+	userClient    *slack.Client
+	users         []slack.User
+	groups        []slack.UserGroup
+	infoChannel   *slack.Channel
+	infoChannelID string
 }
 
 // newAPIClient provides token specific new slack client object
@@ -71,9 +70,9 @@ func New(cfg *config.SlackConfig) (*SlackClient, error) {
 	}
 
 	c := &SlackClient{
-		botClient:       bot,
-		userClient:      user,
-		infoChannelName: cfg.InfoChannel,
+		botClient:     bot,
+		userClient:    user,
+		infoChannelID: cfg.InfoChannelID,
 	}
 
 	err = c.LoadMasterData()
@@ -85,12 +84,11 @@ func New(cfg *config.SlackConfig) (*SlackClient, error) {
 
 // LoadMasterData singleton master data to speed up
 func (c *SlackClient) LoadMasterData() (err error) {
-	log.Debug("slack: loading/updating masterdata...")
-
-	slackChannelsTemp, err := c.GetChannels()
+	slackChannelsTemp, err := c.botClient.GetConversationInfo(c.infoChannelID, true)
 	if err != nil {
-		return fmt.Errorf("slack: failed retrieving channels: %w", err)
+		return fmt.Errorf("slack: failed retrieving info channel '%s': %w", c.infoChannelID, err)
 	}
+	c.infoChannel = slackChannelsTemp
 
 	slackUserListTemp, err := c.botClient.GetUsers()
 	if err != nil {
@@ -104,30 +102,17 @@ func (c *SlackClient) LoadMasterData() (err error) {
 
 	var mutex = &sync.Mutex{}
 	mutex.Lock()
-	c.channels = slackChannelsTemp
 	c.users = slackUserListTemp
 	c.groups = slackGrpsTemp
 	mutex.Unlock()
-
-	for _, ch := range c.channels {
-		if ch.GroupConversation.Name == c.infoChannelName {
-			c.infoChannel = ch
-			log.Debug("slack: masterdata successfully updated")
-			return nil
-		}
-	}
-	return fmt.Errorf("masterdata is missing channel %s", c.infoChannelName)
+	log.Debug("slack: masterdata successfully updated")
+	return nil
 }
 
 // GetSlackGroup requests existing Group for given name
 func (c *SlackClient) GetSlackGroup(slackGroupHandle string) (slack.UserGroup, error) {
 	if slackGroupHandle == "" {
 		return slack.UserGroup{}, fmt.Errorf("slack: finding group failed, empty handle")
-	}
-
-	// TODO: do we need this?
-	for _, group := range c.groups {
-		log.Debugf("slack group: ID: %s, Name: %s, Count: %d (DateDeleted: %s) - %s\n", group.ID, group.Name, group.UserCount, group.DateDelete, group.Description)
 	}
 
 	// get the group we are interested in
@@ -158,90 +143,89 @@ func (c *SlackClient) MatchPDUsers(pdUsers []pagerduty.User) ([]slack.User, erro
 	// get all SLACK User Ids which are in our PD Group - some people are not in slack
 	userList := c.matchPDToSlackUsers(pdUsers)
 
-	log.Infof("slack: #%d user(s) in PD user group | #%d user(s) in all of slack | #%d user(s) will be in slack group\n", len(pdUsers), len(c.users), len(userList))
+	log.Infof("slack: found #%v matching slack user(s) for #%v user(s) in PD group", len(userList), len(pdUsers))
 	return userList, nil
 }
 
 // AddToGroup sets an array of Slack User to an Slack Group (found by name), returns true if noop
-func (c *SlackClient) AddToGroup(jI *config.JobInfo, slackUsers []slack.User) (noChange bool, err error) {
-	var bNoChange = true
+func (c *SlackClient) AddToGroup(groupHandle string, slackUsers []slack.User, dryrun bool) (noChange bool, err error) {
+	noChange = true
 
 	// get the group we are interested in
-	userGroup, err := c.GetSlackGroup(jI.SlackHandleID())
+	userGroupBefore, err := c.GetSlackGroup(groupHandle)
 	if err != nil {
-		return true, fmt.Errorf("slack: retrieving slack group '%s' failed: %w", jI.SlackHandleID(), err)
+		return true, fmt.Errorf("slack: retrieving slack group '%s' failed: %w", groupHandle, err)
 	}
-	jI.SlackGroupObject = userGroup
 
 	if len(slackUsers) == 0 {
-		log.Warnf("slack: user list is empty; nothing to update")
-		jI.Error = fmt.Errorf("slack: user list empty; no update done")
-		return true, nil
+		return true, fmt.Errorf("slack: user list empty; no update done")
 	}
-
-	log.Infof("slack: target group %s[%s]", jI.SlackGroupObject.ID, jI.SlackGroupObject.Name)
 
 	// we need a list of IDs
 	var slackUserIds []string
-
-	if len(slackUsers) == len(jI.SlackGroupObject.Users) {
+	if len(slackUsers) == len(userGroupBefore.Users) {
 		for _, user := range slackUsers {
-			if !groupContainsUser(jI.SlackGroupObject.Users, user) {
+			if !groupContainsUser(userGroupBefore.Users, user) {
 				slackUserIds = append(slackUserIds, user.ID)
-				bNoChange = false
+				noChange = false
 				continue
 			}
-			bNoChange = true
 		}
 	} else {
-		bNoChange = false
+		noChange = false
 	}
 
-	if jI.Cfg.Global.Write && !bNoChange {
-		userGroup, err := c.userClient.UpdateUserGroupMembers(jI.SlackGroupObject.ID, strings.Join(slackUserIds, ","))
+	var userGroupAfter slack.UserGroup
+	if !dryrun && !noChange {
+		userGroupAfter, err = c.userClient.UpdateUserGroupMembers(userGroupBefore.ID, strings.Join(slackUserIds, ","))
 		if err != nil {
-			log.Errorf("slack: writing changes for user group %s[%s] failed: %s", jI.SlackGroupObject.Name, jI.SlackGroupObject.ID, err.Error())
-			jI.Error = err
-		} else {
-			log.Infof("slack: updated %s successfully", userGroup.Name)
+			return noChange, fmt.Errorf("slack: writing changes for user group %s[%s] failed: %s", userGroupBefore.Name, userGroupBefore.ID, err.Error())
 		}
-		if userGroup.DateDelete.String() == "" {
-			_, err = c.userClient.EnableUserGroup(jI.SlackGroupObject.ID)
+
+		log.Infof("slack: updated %s successfully", userGroupAfter.Name)
+
+		if userGroupAfter.DateDelete.String() == "" {
+			_, err = c.userClient.EnableUserGroup(userGroupAfter.ID)
 			if err != nil {
-				log.Errorf("slack: enabling user group %s[%s] failed: %s", jI.SlackGroupObject.Name, jI.SlackGroupObject.ID, err.Error())
-				jI.Error = err
+				return noChange, fmt.Errorf("slack: enabling user group %s[%s] failed: %s", userGroupBefore.Name, userGroupBefore.ID, err.Error())
 			}
 		}
 	} else {
-		log.Infof("slack: no changes executed. flag 'Write' is set to '%v'", jI.Cfg.Global.Write)
+		userGroupAfter = userGroupBefore
 	}
-	log.Infof("slack: group %s has '%d' members(s)", jI.SlackGroupObject.Name, len(slackUsers))
-	return bNoChange, nil
+
+	var removedUsers []string
+	if !noChange {
+		for _, u := range userGroupBefore.Users {
+			var removed = true
+			for _, n := range userGroupAfter.Users {
+				if u == n {
+					removed = false
+					break
+				}
+			}
+			if removed {
+				removedUsers = append(removedUsers, u)
+			}
+		}
+	}
+
+	if dryrun {
+		log.Infof("slack: dry run. no changes executed.")
+	}
+	log.Infof("slack: added %v to and removed %v from group '%s'(%d member(s))", slackUserIds, removedUsers, userGroupAfter.Name, len(userGroupAfter.Users))
+
+	return noChange, nil
 }
 
-func (c *SlackClient) DisableGroup(jI *config.JobInfo) {
-	userGroup, err := c.userClient.DisableUserGroup(jI.SlackGroupObject.ID)
+func (c *SlackClient) DisableGroup(groupID string) error {
+	userGroup, err := c.userClient.DisableUserGroup(groupID)
 	if err != nil {
-		log.Errorf("slack: disabling slack user group %s[%s] failed: %s", jI.SlackGroupObject.Name, jI.SlackGroupObject.ID, err)
-		jI.Error = err
-	} else {
-		log.Infof("slack: disabled slack user group %s[%s]", userGroup.Name, userGroup.ID)
+		log.Errorf("slack: disabling slack user group %s failed: %s", groupID, err.Error())
+		return err
 	}
-}
-
-// GetChannels gives the Channels with Members & co
-func (c *SlackClient) GetChannels() ([]slack.Channel, error) {
-	cp := slack.GetConversationsParameters{
-		ExcludeArchived: true,
-		Types:           []string{"public_channel", "private_channel"},
-		Limit:           1000,
-	}
-
-	channels, _, err := c.botClient.GetConversations(&cp)
-	if err != nil {
-		return nil, fmt.Errorf("slack: retrieving channels failed: %w", err)
-	}
-	return channels, nil
+	log.Infof("slack: disabled slack user group %s[%s]", userGroup.Name, userGroup.ID)
+	return nil
 }
 
 // groupContainsUser returns true user is contained in the groupUserIDs

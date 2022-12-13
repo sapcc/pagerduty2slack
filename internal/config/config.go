@@ -41,7 +41,7 @@ type SlackConfig struct {
 	// Token to authenticate
 	BotSecurityToken  string `yaml:"securityTokenBot"`
 	UserSecurityToken string `yaml:"securityTokenUser"`
-	InfoChannel       string `yaml:"infoChannel"`
+	InfoChannelID     string `yaml:"infoChannelID"`
 	Workspace         string `yaml:"workspaceForChatLinks"`
 }
 
@@ -89,8 +89,8 @@ type PagerdutyTeamToSlackGroup struct {
 
 // SyncObjects Struct
 type SyncObjects struct {
-	SlackGroupHandle  string   `yaml:"slackGroupHandle"`
-	PagerdutyObjectID []string `yaml:"pdObjectIds"`
+	SlackGroupHandle   string   `yaml:"slackGroupHandle"`
+	PagerdutyObjectIDs []string `yaml:"pdObjectIds"`
 }
 
 // NewConfig reads the configuration from the given filePath.
