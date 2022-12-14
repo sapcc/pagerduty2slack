@@ -126,7 +126,6 @@ func (c *SlackClient) GetSlackGroup(slackGroupHandle string) (slack.UserGroup, e
 	}
 
 	if targetGroup.Handle == "" {
-		log.Errorf("slack: finding group handle '%s' failed. check config", slackGroupHandle)
 		return slack.UserGroup{}, fmt.Errorf("slack: finding group handle '%s' failed. check config", slackGroupHandle)
 	}
 
@@ -222,7 +221,6 @@ func (c *SlackClient) AddToGroup(groupHandle string, slackUsers []slack.User, dr
 func (c *SlackClient) DisableGroup(groupID string) error {
 	userGroup, err := c.userClient.DisableUserGroup(groupID)
 	if err != nil {
-		log.Errorf("slack: disabling slack user group %s failed: %s", groupID, err.Error())
 		return err
 	}
 	log.Infof("slack: disabled slack user group %s[%s]", userGroup.Name, userGroup.ID)

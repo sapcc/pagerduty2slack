@@ -139,7 +139,7 @@ func (c *PDClient) listOnCallsLayers(scheduleIDs []string, since, until offsetIn
 						users = append(users, c.getUser(o.User))
 					}
 				}
-				log.Debugf("pagerduty: handled overrides for schedule%s[%s]", schedule.Name, schedule.ID)
+				log.Debugf("pagerduty: handled overrides for schedule %s[%s]", schedule.Name, schedule.ID)
 				// if exist and we do not need the other layers - jump to next schedule
 				if layerSyncStyle == config.OverridesOnlyIfThere {
 					continue

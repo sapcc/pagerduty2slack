@@ -55,14 +55,13 @@ func (s *PagerdutyScheduleToSlackJob) Run() error {
 	tfF, err := time.ParseDuration(s.syncOpts.HandoverTimeFrameForward)
 	if err != nil {
 		tfF = time.Nanosecond * 0
-		eS := fmt.Sprintf("Invalid duration given in job %s: %s", s.slackHandle, s.syncOpts.HandoverTimeFrameForward)
+		eS := fmt.Sprintf("job: invalid timeframe forward duration '%s' for sync of '%s'. Use default 0.:%s", s.syncOpts.HandoverTimeFrameBackward, s.slackHandle, err.Error())
 		s.err = fmt.Errorf(eS)
-		log.Info(eS)
 	}
 	tfB, err := time.ParseDuration(s.syncOpts.HandoverTimeFrameBackward)
 	if err != nil {
 		tfB = time.Nanosecond * 0
-		eS := fmt.Sprintf("job: invalid duration '%s' for sync of '%s'. Use default 0.:%s", s.syncOpts.HandoverTimeFrameBackward, s.slackHandle, err.Error())
+		eS := fmt.Sprintf("job: invalid timeframe backward duration '%s' for sync of '%s'. Use default 0.:%s", s.syncOpts.HandoverTimeFrameBackward, s.slackHandle, err.Error())
 		log.Warn(eS)
 		log.Info(eS)
 	}
@@ -85,7 +84,7 @@ func (s *PagerdutyScheduleToSlackJob) Run() error {
 	// put ldap users which also have a slack account to our slack group (who's not in the ldap group is out)
 	if _, err = s.slackClient.AddToGroup(s.slackHandle, slackUsers, s.dryrun); err != nil {
 		s.err = err
-		return fmt.Errorf("adding OnDuty members to slack group failed: %w", err)
+		return fmt.Errorf("job: adding OnDuty members to slack group %s failed: %w", s.slackHandle, err)
 	}
 	return nil
 }

@@ -73,10 +73,14 @@ func (t *PagerdutyTeamToSlackJob) Run() error {
 	}
 
 	if len(slackUserFilteredList) == 0 && t.syncOpts.DisableSlackHandleTemporaryIfNoneOnShift {
-		return t.slackClient.DisableGroup(t.slackHandle)
+		if err := t.slackClient.DisableGroup(t.slackHandle); err != nil {
+			t.err = err
+			return err
+		}
 	}
 
 	if _, err := t.slackClient.AddToGroup(t.slackHandle, slackUserFilteredList, t.dryrun); err != nil {
+		t.err = err
 		return fmt.Errorf("job: updating slack group '%s' failed: %s", t.slackHandle, err.Error())
 	}
 	return nil

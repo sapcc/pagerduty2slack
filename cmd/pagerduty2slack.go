@@ -68,8 +68,7 @@ func main() {
 		_, err = c.AddFunc(s.CrontabExpressionForRepetition, func() {
 			err := job.Run()
 			if err != nil {
-				log.Warnf("adding OnDuty members to slack failed: %s", err.Error())
-				return
+				log.Warnf("schedule_sync failed: %s", err.Error())
 			}
 			if err = jobs.PostInfoMessage(slackClient, job); err != nil {
 				log.Warnf("posting update to slack failed: %s", err.Error())
