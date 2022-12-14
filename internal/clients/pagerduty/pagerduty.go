@@ -33,7 +33,7 @@ func New(cfg *config.PagerdutyConfig) (*PDClient, error) {
 		pagerdutyClient: pagerdutyClient,
 	}
 
-	defaultUser, err := c.FindUserByEmail(cfg.APIUser)
+	defaultUser, err := c.findUserByEmail(cfg.APIUser)
 	if err != nil {
 		return nil, fmt.Errorf("pagerduty: getting default user by email '%s' failed: %w", cfg.APIUser, err)
 	}
@@ -42,8 +42,8 @@ func New(cfg *config.PagerdutyConfig) (*PDClient, error) {
 	return c, nil
 }
 
-// FindUserByEmail returns the pagerduty user for the given email or an error.
-func (c *PDClient) FindUserByEmail(email string) (*pagerduty.User, error) {
+// findUserByEmail returns the pagerduty user for the given email or an error.
+func (c *PDClient) findUserByEmail(email string) (*pagerduty.User, error) {
 	userList, err := c.pagerdutyClient.ListUsersWithContext(context.TODO(), pagerduty.ListUsersOptions{Query: email})
 	if err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ func (c *PDClient) FindUserByEmail(email string) (*pagerduty.User, error) {
 	return nil, fmt.Errorf("user with email '%s' not found", email)
 }
 
-// WithoutPhone gives all User without a phone number set
+// WithoutPhone returns all users without phone number set
 func (c *PDClient) WithoutPhone(users []pagerduty.User) []pagerduty.User {
 	noPhoneUsers := []pagerduty.User{}
 	for _, user := range users {
@@ -164,6 +164,7 @@ func (c *PDClient) listOnCallsLayers(scheduleIDs []string, since, until offsetIn
 	return users, schedules, nil
 }
 
+// getUser
 func (c *PDClient) getUser(user pagerduty.APIObject) pagerduty.User {
 	o := pagerduty.GetUserOptions{
 		Includes: []string{"contact_methods"},

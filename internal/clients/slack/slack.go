@@ -20,12 +20,12 @@ const (
 )
 
 type SlackClient struct {
-	botClient     *slack.Client
-	userClient    *slack.Client
-	users         []slack.User
-	groups        []slack.UserGroup
-	infoChannel   *slack.Channel
-	infoChannelID string
+	botClient     *slack.Client     // slack client for bot
+	userClient    *slack.Client     // slack client for user
+	users         []slack.User      // list of all slack users in the workspace
+	groups        []slack.UserGroup // list of all groups in the workspace
+	infoChannel   *slack.Channel    // channel used to post info messages to
+	infoChannelID string            // ID of info channel
 }
 
 // newAPIClient provides token specific new slack client object
@@ -46,19 +46,20 @@ func newAPIClient(cfg *config.SlackConfig, sct SlackClientType, options ...slack
 
 // PostBlocksMessage takes the blocks and sends them to the default info channel
 func (c *SlackClient) PostBlocksMessage(blocks ...slack.Block) error {
-	msO := slack.MsgOptionBlocks(blocks...)
-	return c.PostMessage(msO)
+	opts := slack.MsgOptionBlocks(blocks...)
+	return c.PostMessage(opts)
 }
 
-func (c *SlackClient) PostMessage(msO slack.MsgOption) error {
-	if _, _, err := c.botClient.PostMessage(c.infoChannel.ID, msO); err != nil {
+// PostMessage takes the message options sends it to the info channel
+func (c *SlackClient) PostMessage(opts slack.MsgOption) error {
+	if _, _, err := c.botClient.PostMessage(c.infoChannel.ID, opts); err != nil {
 		return fmt.Errorf("slack: failed posting message: %w", err)
 	}
-	log.Debug("Message successfully sent to channel ", c.infoChannel.Name)
+	log.Debug("slack: message successfully sent to channel ", c.infoChannel.Name)
 	return nil
 }
 
-// New inits a slackclient with bot and user client and loads masterdata
+// New returns a new slackclient with intialized bot & user client and loaded masterdata
 func New(cfg *config.SlackConfig) (*SlackClient, error) {
 	bot, err := newAPIClient(cfg, SlackClientTypeBot)
 	if err != nil {

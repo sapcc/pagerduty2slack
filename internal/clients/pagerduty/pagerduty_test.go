@@ -36,7 +36,7 @@ func TestGetUserByEmail(t *testing.T) {
 	client, mock := setupPagerDuty(t)
 
 	mock.expectWithQuery("/users", "admin@test.com", usersResponse(user("admin", "0001", true, true)))
-	actual, err := client.FindUserByEmail("admin@test.com")
+	actual, err := client.findUserByEmail("admin@test.com")
 
 	assert.NoError(t, err)
 	if assert.NotNil(t, actual) {

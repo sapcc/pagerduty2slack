@@ -16,20 +16,24 @@ import (
 )
 
 type PagerdutyTeamToSlackJob struct {
-	dryrun         bool
-	syncOpts       *config.ScheduleSyncOptions
-	err            error
-	slackHandle    string
-	pagerDutyIDs   []string
-	pagerDutyUsers []pagerduty.User
-	pagerDutyTeams []pagerduty.APIObject
-	schedule       cron.Schedule
-	pd             *pagerdutyclient.PDClient
-	slackClient    *slackclient.SlackClient
+	syncOpts *config.ScheduleSyncOptions // options for tasks during sync
+	schedule cron.Schedule               // on which this job runs
+	dryrun   bool                        // when enabled changes are not manifested
+	err      error                       // err used for slack info message
+
+	pd          *pagerdutyclient.PDClient // pagerduty API access
+	slackClient *slackclient.SlackClient  // slack API access
+
+	slackHandle string // of the target user group
+	// TODO: get pagerdutyTeams when creating the Job?
+	pagerDutyIDs   []string              // IDs of the team(s) to sync
+	pagerDutyUsers []pagerduty.User      // users part of the pagerduty team(s)
+	pagerDutyTeams []pagerduty.APIObject // pagerduty team(s) synced by this job
 }
 
+// NewSchedulesSyncJob creates a new job to sync members of pagerduty teams to a slack user group
 func NewTeamSyncJob(cfg config.PagerdutyTeamToSlackGroup, dryrun bool, pd *pagerdutyclient.PDClient, slackClient *slackclient.SlackClient) (*PagerdutyTeamToSlackJob, error) {
-	schedule, err := cron.ParseStandard(cfg.CrontabExpressionForRepetition)
+	schedule, err := cron.ParseStandard("TZ=UTC " + cfg.CrontabExpressionForRepetition)
 	if err != nil {
 		return nil, fmt.Errorf("job: invalid cron schedule '%s': %w", cfg.CrontabExpressionForRepetition, err)
 	}
@@ -43,6 +47,7 @@ func NewTeamSyncJob(cfg config.PagerdutyTeamToSlackGroup, dryrun bool, pd *pager
 	}, nil
 }
 
+// Run syncs pagerduty team(s) members to slack user group
 func (t *PagerdutyTeamToSlackJob) Run() error {
 	log.Info(t.Name())
 
@@ -77,37 +82,32 @@ func (t *PagerdutyTeamToSlackJob) Run() error {
 	return nil
 }
 
+// Name of the job
 func (t *PagerdutyTeamToSlackJob) Name() string {
 	return fmt.Sprintf("job: sync pagerduty team(s) '%s' to slack group: '%s'", strings.Join(t.pagerDutyIDs, ","), t.slackHandle)
 }
 
-func (t *PagerdutyTeamToSlackJob) JobType() string {
-	return string(config.PdTeamSync)
-}
-func (t *PagerdutyTeamToSlackJob) PagerDutyObjects() []pagerduty.APIObject {
-	return t.pagerDutyTeams
-}
-
-func (t *PagerdutyTeamToSlackJob) SlackHandleID() string {
-	return t.slackHandle
-}
-
+// Icon returns name of icon to show in Slack messages
 func (t *PagerdutyTeamToSlackJob) Icon() string {
 	return ":threepeople:"
 }
 
-func (t *PagerdutyTeamToSlackJob) Error() error {
-	return t.err
+// JobType as string
+func (t *PagerdutyTeamToSlackJob) JobType() string {
+	return string(PdTeamSync)
 }
 
-func (t *PagerdutyTeamToSlackJob) Dryrun() bool {
-	return t.dryrun
+// SlackHandle of the slack user group
+func (t *PagerdutyTeamToSlackJob) SlackHandle() string {
+	return t.slackHandle
 }
 
-func (t *PagerdutyTeamToSlackJob) NextRun() time.Time {
-	return t.schedule.Next(time.Now())
+// PagerDutyObjects returns the pagerduty team(s) synced
+func (t *PagerdutyTeamToSlackJob) PagerDutyObjects() []pagerduty.APIObject {
+	return t.pagerDutyTeams
 }
 
+// SlackInfoMessageBody returns TextBlock describing the number of users on shift
 func (t *PagerdutyTeamToSlackJob) SlackInfoMessageBody() *slack.TextBlockObject {
 	group, err := t.slackClient.GetSlackGroup(t.slackHandle)
 	var userCount = 0
@@ -120,4 +120,19 @@ func (t *PagerdutyTeamToSlackJob) SlackInfoMessageBody() *slack.TextBlockObject 
 		Emoji:    false,
 		Verbatim: false,
 	}
+}
+
+// Dryrun is true when the job is not performing changes
+func (t *PagerdutyTeamToSlackJob) Dryrun() bool {
+	return t.dryrun
+}
+
+// NextRun returns the time from now when the cron is next executed
+func (t *PagerdutyTeamToSlackJob) NextRun() time.Time {
+	return t.schedule.Next(time.Now())
+}
+
+// Error if any occurred during the sync
+func (t *PagerdutyTeamToSlackJob) Error() error {
+	return t.err
 }

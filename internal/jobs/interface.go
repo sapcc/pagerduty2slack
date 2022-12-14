@@ -11,22 +11,40 @@ import (
 	slackclient "github.com/sapcc/pagerduty2slack/internal/clients/slack"
 )
 
+// ObjectSyncType
+type ObjectSyncType string
+
+const (
+	PdScheduleSync ObjectSyncType = "PD Schedule"
+	PdTeamSync     ObjectSyncType = "PD Team"
+)
+
 type SyncJob interface {
+	// Name of the job
 	Name() string
+	// Icon returns name of icon to show in Slack messages
 	Icon() string
+	// JobType as string
 	JobType() string
-	SlackHandleID() string
+	// SlackHandle of the slack user group
+	SlackHandle() string
+	// PagerDutyObjects returns the pagerduty schedule/teams synced
 	PagerDutyObjects() []pagerduty.APIObject
+	// SlackInfoMessageBody custom to the Job
 	SlackInfoMessageBody() *slack.TextBlockObject
+	// Dryrun is true when the job is not performing changes
 	Dryrun() bool
+	// NextRun returns the time from now when the cron is next executed
 	NextRun() time.Time
+	// Error if any occurred during the sync
 	Error() error
 }
 
+// PostInfoMessage posts a message to slack with the current sync state of the job
 func PostInfoMessage(c *slackclient.SlackClient, j SyncJob) error {
 	divSection := slack.NewDividerBlock()
 
-	sHeaderText := fmt.Sprintf("%s %s > Slack Handle: `%s`", j.Icon(), j.JobType(), j.SlackHandleID())
+	sHeaderText := fmt.Sprintf("%s %s > Slack Handle: `%s`", j.Icon(), j.JobType(), j.SlackHandle())
 	if j.Dryrun() {
 		sHeaderText += " - !!! DRY RUN !!! No update done !!!"
 	}

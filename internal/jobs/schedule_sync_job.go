@@ -16,20 +16,24 @@ import (
 )
 
 type PagerdutyScheduleToSlackJob struct {
-	syncOpts           config.ScheduleSyncOptions
-	dryrun             bool
-	slackHandle        string
-	pagerDutyIDs       []string
-	pagerdutyUsers     []pagerduty.User
-	pagerdutySchedules []pagerduty.APIObject
-	schedule           cron.Schedule
-	pd                 *pagerdutyclient.PDClient
-	slackClient        *slackclient.SlackClient
-	err                error
+	syncOpts config.ScheduleSyncOptions // options for tasks during sync
+	schedule cron.Schedule              // on which this job runs
+	dryrun   bool                       // when enabled changes are not manifested
+	err      error                      // err used for slack info message
+
+	pd          *pagerdutyclient.PDClient // pagerduty API access
+	slackClient *slackclient.SlackClient  // slack API access
+
+	slackHandle string // of the target user group
+	// TODO: get pagerdutySchedules when creating the Job?
+	pagerDutyIDs       []string              // IDs of the schedules to sync
+	pagerdutyUsers     []pagerduty.User      // users part of the pagerduty schedule(s)
+	pagerdutySchedules []pagerduty.APIObject // pagerduty schedules synced by this job
 }
 
+// NewSchedulesSyncJob creates a new job to sync members of pagerduty schedules to a slack user group
 func NewScheduleSyncJob(cfg config.PagerdutyScheduleOnDutyToSlackGroup, dryrun bool, pd *pagerdutyclient.PDClient, slackClient *slackclient.SlackClient) (*PagerdutyScheduleToSlackJob, error) {
-	schedule, err := cron.ParseStandard(cfg.CrontabExpressionForRepetition)
+	schedule, err := cron.ParseStandard("TZ=UTC " + cfg.CrontabExpressionForRepetition)
 	if err != nil {
 		return nil, fmt.Errorf("job: invalid cron schedule '%s': %w", cfg.CrontabExpressionForRepetition, err)
 	}
@@ -44,6 +48,7 @@ func NewScheduleSyncJob(cfg config.PagerdutyScheduleOnDutyToSlackGroup, dryrun b
 	}, nil
 }
 
+// Run syncs pagerduty schedule members to slack user group
 func (s *PagerdutyScheduleToSlackJob) Run() error {
 	log.Info(s.Name())
 
@@ -85,30 +90,32 @@ func (s *PagerdutyScheduleToSlackJob) Run() error {
 	return nil
 }
 
+// Name of the job
+func (s *PagerdutyScheduleToSlackJob) Name() string {
+	return fmt.Sprintf("job: sync pagerduty schedule(s) '%s' to slack group: '%s'", strings.Join(s.pagerDutyIDs, ","), s.slackHandle)
+}
+
+// Icon returns name of icon to show in Slack messages
 func (s *PagerdutyScheduleToSlackJob) Icon() string {
 	return ":calendar:"
 }
 
-func (s *PagerdutyScheduleToSlackJob) Error() error {
-	return s.err
+// JobType as string
+func (s *PagerdutyScheduleToSlackJob) JobType() string {
+	return string(PdScheduleSync)
 }
 
-func (s *PagerdutyScheduleToSlackJob) Dryrun() bool {
-	return s.dryrun
+// SlackHandle of the slack user group
+func (s *PagerdutyScheduleToSlackJob) SlackHandle() string {
+	return s.slackHandle
 }
 
-func (s *PagerdutyScheduleToSlackJob) NextRun() time.Time {
-	return s.schedule.Next(time.Now())
-}
-
+// PagerDutyObjects returns the pagerduty schedule/teams synced
 func (s *PagerdutyScheduleToSlackJob) PagerDutyObjects() []pagerduty.APIObject {
 	return s.pagerdutySchedules
 }
 
-func (s *PagerdutyScheduleToSlackJob) SlackHandleID() string {
-	return s.slackHandle
-}
-
+// SlackInfoMessageBody returns TexBlock with the pagerduty users on shift
 func (s *PagerdutyScheduleToSlackJob) SlackInfoMessageBody() *slack.TextBlockObject {
 	var sL []string
 	for _, aO := range s.pagerdutyUsers {
@@ -123,10 +130,17 @@ func (s *PagerdutyScheduleToSlackJob) SlackInfoMessageBody() *slack.TextBlockObj
 	}
 }
 
-func (s *PagerdutyScheduleToSlackJob) Name() string {
-	return fmt.Sprintf("job: sync pagerduty schedule(s) '%s' to slack group: '%s'", strings.Join(s.pagerDutyIDs, ","), s.slackHandle)
+// Dryrun is true when the job is not performing changes
+func (s *PagerdutyScheduleToSlackJob) Dryrun() bool {
+	return s.dryrun
 }
 
-func (s *PagerdutyScheduleToSlackJob) JobType() string {
-	return string(config.PdScheduleSync)
+// NextRun returns the time from now when the cron is next executed
+func (s *PagerdutyScheduleToSlackJob) NextRun() time.Time {
+	return s.schedule.Next(time.Now())
+}
+
+// Error if any occurred during the sync
+func (s *PagerdutyScheduleToSlackJob) Error() error {
+	return s.err
 }
