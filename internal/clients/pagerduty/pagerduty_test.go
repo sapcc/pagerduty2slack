@@ -36,7 +36,7 @@ func TestGetUserByEmail(t *testing.T) {
 	client, mock := setupPagerDuty(t)
 
 	mock.expectWithQuery("/users", "admin@test.com", usersResponse(user("admin", "0001", true, true)))
-	actual, err := client.PdGetUserByEmail("admin@test.com")
+	actual, err := client.FindUserByEmail("admin@test.com")
 
 	assert.NoError(t, err)
 	if assert.NotNil(t, actual) {
@@ -173,7 +173,7 @@ func TestListOnCallFinal(t *testing.T) {
 	mock.expect("/schedules/1000", scheduleResponse(schedule("Weekly OnCallRotation", "1000")))
 	mock.expect("/schedules/2000", scheduleResponse(schedule("Daily OnCallRotation", "2000")))
 
-	users, schedules, err := client.pdListOnCallUseFinal(scheduleIDs, since, until)
+	users, schedules, err := client.listOnCallsFinalLayer(scheduleIDs, since, until)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(users))
@@ -198,7 +198,7 @@ func TestListOnCallUseAllActiveLayers(t *testing.T) {
 	mock.expect("/schedules/4001", scheduleResponse(scheduleWithLayer("Schedule With Layers", "4001", user("user02", "0002", true, true))))
 	mock.expect("/schedules/4001/overrides", noOverridesResponse())
 
-	users, schedules, err := client.pdListOnCallUseLayers(scheduleIDs, since, until, config.AllActiveLayers)
+	users, schedules, err := client.listOnCallsLayers(scheduleIDs, since, until, config.AllActiveLayers)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(users))

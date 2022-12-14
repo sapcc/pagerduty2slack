@@ -57,7 +57,7 @@ func (t *PagerdutyTeamToSlackJob) Run() error {
 
 	pdUsersWithoutPhone := t.pd.WithoutPhone(pdUsers)
 	for _, i2 := range pdUsersWithoutPhone {
-		log.Warnf("User without Fon: %s %s", i2.Name, i2.HTMLURL)
+		log.Infof("job: team_sync: pagerduty user without Fon: %s %s", i2.Name, i2.HTMLURL)
 	}
 
 	// get all SLACK users, bcz. we need the SLACK user id and match them with the ldap users

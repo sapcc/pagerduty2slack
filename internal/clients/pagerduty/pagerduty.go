@@ -33,7 +33,7 @@ func New(cfg *config.PagerdutyConfig) (*PDClient, error) {
 		pagerdutyClient: pagerdutyClient,
 	}
 
-	defaultUser, err := c.PdGetUserByEmail(cfg.APIUser)
+	defaultUser, err := c.FindUserByEmail(cfg.APIUser)
 	if err != nil {
 		return nil, fmt.Errorf("pagerduty: getting default user by email '%s' failed: %w", cfg.APIUser, err)
 	}
@@ -42,8 +42,8 @@ func New(cfg *config.PagerdutyConfig) (*PDClient, error) {
 	return c, nil
 }
 
-// PdGetUserByEmail returns the pagerduty user for the given email or an error.
-func (c *PDClient) PdGetUserByEmail(email string) (*pagerduty.User, error) {
+// FindUserByEmail returns the pagerduty user for the given email or an error.
+func (c *PDClient) FindUserByEmail(email string) (*pagerduty.User, error) {
 	userList, err := c.pagerdutyClient.ListUsersWithContext(context.TODO(), pagerduty.ListUsersOptions{Query: email})
 	if err != nil {
 		return nil, err
@@ -78,13 +78,13 @@ func (c *PDClient) WithoutPhone(users []pagerduty.User) []pagerduty.User {
 // ListOnCallUsers returns the OnCall users being on shift now
 func (c *PDClient) ListOnCallUsers(scheduleIDs []string, since, until offsetInHours, layerSyncStyle config.SyncStyle) ([]pagerduty.User, []pagerduty.APIObject, error) {
 	if layerSyncStyle == config.FinalLayer {
-		return c.pdListOnCallUseFinal(scheduleIDs, since, until)
+		return c.listOnCallsFinalLayer(scheduleIDs, since, until)
 	} else {
-		return c.pdListOnCallUseLayers(scheduleIDs, since, until, layerSyncStyle)
+		return c.listOnCallsLayers(scheduleIDs, since, until, layerSyncStyle)
 	}
 }
 
-func (c *PDClient) pdListOnCallUseFinal(scheduleIDs []string, since, until offsetInHours) (users []pagerduty.User, schedules []pagerduty.APIObject, err error) {
+func (c *PDClient) listOnCallsFinalLayer(scheduleIDs []string, since, until offsetInHours) (users []pagerduty.User, schedules []pagerduty.APIObject, err error) {
 	onCallOpts := pagerduty.ListOnCallOptions{
 		ScheduleIDs: scheduleIDs,
 		Since:       util.TimestampToString(time.Now().Add(-since)),
@@ -103,7 +103,7 @@ func (c *PDClient) pdListOnCallUseFinal(scheduleIDs []string, since, until offse
 	return users, schedules, nil
 }
 
-func (c *PDClient) pdListOnCallUseLayers(scheduleIDs []string, since, until offsetInHours, layerSyncStyle config.SyncStyle) (users []pagerduty.User, schedules []pagerduty.APIObject,
+func (c *PDClient) listOnCallsLayers(scheduleIDs []string, since, until offsetInHours, layerSyncStyle config.SyncStyle) (users []pagerduty.User, schedules []pagerduty.APIObject,
 	err error) {
 	// query options for schedule and override request (we needed since the api doesn't deliver the override info, beside api docu said it should)
 	scheduleOpts := pagerduty.GetScheduleOptions{
