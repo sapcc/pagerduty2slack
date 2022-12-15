@@ -61,11 +61,11 @@ func setup(t *testing.T) (*Client, *slacktest.Server) {
 	var err error
 	apiURLOption := slack.OptionAPIURL(testServer.GetAPIURL())
 
-	botMock, err := newAPIClient(cfg, SlackClientTypeBot, apiURLOption)
+	botMock, err := newAPIClient(cfg.BotSecurityToken, apiURLOption)
 	if err != nil {
 		t.Fatalf("failed setting up test server: %s", err.Error())
 	}
-	userMock, err := newAPIClient(cfg, SlackClientTypeUser, apiURLOption)
+	userMock, err := newAPIClient(cfg.UserSecurityToken, apiURLOption)
 	if err != nil {
 		t.Fatalf("failed setting up test server: %s", err.Error())
 	}

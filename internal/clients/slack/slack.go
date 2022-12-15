@@ -21,12 +21,12 @@ type Client struct {
 	infoChannelID string              // ID of info channel
 }
 
-// newAPIClient provides token specific new slack client object
+// newAPIClient returns token specific slack client object and tests auth
 func newAPIClient(token string, options ...slackgo.Option) (*slackgo.Client, error) {
-	var c *slackgo.Client
 	options = append(options, slackgo.OptionDebug(false))
-	c = slackgo.New(token, options...)
-	return c, nil
+	c := slackgo.New(token, options...)
+	_, err := c.AuthTest()
+	return c, err
 }
 
 // PostBlocksMessage takes the blocks and sends them to the default info channel
