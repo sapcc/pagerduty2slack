@@ -41,7 +41,7 @@ type SyncJob interface {
 }
 
 // PostInfoMessage posts a message to slack with the current sync state of the job
-func PostInfoMessage(c *slackclient.SlackClient, j SyncJob) error {
+func PostInfoMessage(c *slackclient.Client, j SyncJob) error {
 	divSection := slack.NewDividerBlock()
 
 	sHeaderText := fmt.Sprintf("%s %s > Slack Handle: `%s`", j.Icon(), j.JobType(), j.SlackHandle())

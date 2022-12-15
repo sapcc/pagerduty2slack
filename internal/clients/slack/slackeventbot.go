@@ -1,4 +1,4 @@
-package slackclient
+package slack
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ type Bot struct {
 	commands []Command
 }
 
-func NewEventBot(c *SlackClient) (*Bot, error) {
+func NewEventBot(c *Client) (*Bot, error) {
 	b := &Bot{
 		client:    c.botClient,
 		rtmClient: c.botClient.NewRTM(),

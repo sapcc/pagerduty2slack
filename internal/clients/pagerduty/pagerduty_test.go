@@ -1,4 +1,4 @@
-package pagerdutyclient
+package pagerduty
 
 import (
 	"bytes"
@@ -205,12 +205,12 @@ func TestListOnCallUseAllActiveLayers(t *testing.T) {
 	assert.Equal(t, 2, len(schedules))
 }
 
-func setupPagerDuty(t *testing.T) (client *PDClient, mock *pagerDutyMock) {
+func setupPagerDuty(t *testing.T) (client *Client, mock *pagerDutyMock) {
 	cfg := config.PagerdutyConfig{AuthToken: "test", APIUser: "test@company.com"}
 	c := pagerduty.NewClient("")
 	mock = &pagerDutyMock{t: t, expectations: make(map[string]*expectation)}
 	c.HTTPClient = mock
-	return &PDClient{cfg: &cfg, pagerdutyClient: c}, mock
+	return &Client{cfg: &cfg, api: c}, mock
 }
 
 func (m *pagerDutyMock) expect(path string, response *http.Response) {

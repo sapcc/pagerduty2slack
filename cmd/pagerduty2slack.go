@@ -38,12 +38,12 @@ func main() {
 
 	initLogging(cfg.Global.LogLevel)
 
-	slackClient, err := slackclient.New(&cfg.Slack)
+	slackClient, err := slackclient.NewClient(&cfg.Slack)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	pdClient, err := pagerdutyclient.New(&cfg.Pagerduty)
+	pdClient, err := pagerdutyclient.NewClient(&cfg.Pagerduty)
 	if err != nil {
 		log.Fatal(err)
 	}

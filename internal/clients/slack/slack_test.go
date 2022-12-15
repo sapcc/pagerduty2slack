@@ -1,4 +1,4 @@
-package slackclient
+package slack
 
 import (
 	"encoding/json"
@@ -25,7 +25,7 @@ type responseMetadata struct {
 	NextCursor string `json:"next_cursor"`
 }
 
-func setup(t *testing.T) (*SlackClient, *slacktest.Server) {
+func setup(t *testing.T) (*Client, *slacktest.Server) {
 	testServer := slacktest.NewTestServer()
 	go testServer.Start()
 
@@ -70,7 +70,7 @@ func setup(t *testing.T) (*SlackClient, *slacktest.Server) {
 		t.Fatalf("failed setting up test server: %s", err.Error())
 	}
 
-	client := &SlackClient{
+	client := &Client{
 		botClient:     botMock,
 		userClient:    userMock,
 		infoChannelID: cfg.InfoChannelID,
@@ -104,7 +104,7 @@ func TestLoadSlackMasterData(t *testing.T) {
 }
 
 func TestGetSlackUser(t *testing.T) {
-	cut := SlackClient{}
+	cut := Client{}
 	pdUsers := []pagerduty.User{{Email: "spengler@ghostbusters.example.com"}}
 	cut.users = []slack.User{
 		{Profile: slack.UserProfile{Email: "spengler@ghostbusters.example.com"}},

@@ -21,8 +21,8 @@ type PagerdutyScheduleToSlackJob struct {
 	dryrun   bool                       // when enabled changes are not manifested
 	err      error                      // err used for slack info message
 
-	pd          *pagerdutyclient.PDClient // pagerduty API access
-	slackClient *slackclient.SlackClient  // slack API access
+	pd          *pagerdutyclient.Client // pagerduty API access
+	slackClient *slackclient.Client     // slack API access
 
 	slackHandle string // of the target user group
 	// TODO: get pagerdutySchedules when creating the Job?
@@ -32,7 +32,7 @@ type PagerdutyScheduleToSlackJob struct {
 }
 
 // NewSchedulesSyncJob creates a new job to sync members of pagerduty schedules to a slack user group
-func NewScheduleSyncJob(cfg config.PagerdutyScheduleOnDutyToSlackGroup, dryrun bool, pd *pagerdutyclient.PDClient, slackClient *slackclient.SlackClient) (*PagerdutyScheduleToSlackJob, error) {
+func NewScheduleSyncJob(cfg config.PagerdutyScheduleOnDutyToSlackGroup, dryrun bool, pd *pagerdutyclient.Client, slackClient *slackclient.Client) (*PagerdutyScheduleToSlackJob, error) {
 	schedule, err := cron.ParseStandard("TZ=UTC " + cfg.CrontabExpressionForRepetition)
 	if err != nil {
 		return nil, fmt.Errorf("job: invalid cron schedule '%s': %w", cfg.CrontabExpressionForRepetition, err)

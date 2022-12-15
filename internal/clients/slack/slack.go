@@ -1,57 +1,42 @@
-package slackclient
+package slack
 
 import (
 	"fmt"
 	"strings"
 	"sync"
 
-	"github.com/PagerDuty/go-pagerduty"
+	pd "github.com/PagerDuty/go-pagerduty"
 	log "github.com/sirupsen/logrus"
-	"github.com/slack-go/slack"
+	slackgo "github.com/slack-go/slack"
 
 	"github.com/sapcc/pagerduty2slack/internal/config"
 )
 
-type SlackClientType int
-
-const (
-	SlackClientTypeBot SlackClientType = iota
-	SlackClientTypeUser
-)
-
-type SlackClient struct {
-	botClient     *slack.Client     // slack client for bot
-	userClient    *slack.Client     // slack client for user
-	users         []slack.User      // list of all slack users in the workspace
-	groups        []slack.UserGroup // list of all groups in the workspace
-	infoChannel   *slack.Channel    // channel used to post info messages to
-	infoChannelID string            // ID of info channel
+type Client struct {
+	botClient     *slackgo.Client     // slack client for bot
+	userClient    *slackgo.Client     // slack client for user
+	users         []slackgo.User      // list of all slack users in the workspace
+	groups        []slackgo.UserGroup // list of all groups in the workspace
+	infoChannel   *slackgo.Channel    // channel used to post info messages to
+	infoChannelID string              // ID of info channel
 }
 
 // newAPIClient provides token specific new slack client object
-func newAPIClient(cfg *config.SlackConfig, sct SlackClientType, options ...slack.Option) (*slack.Client, error) {
-	var c *slack.Client
-	options = append(options, slack.OptionDebug(false))
-
-	switch sct {
-	case SlackClientTypeUser:
-		c = slack.New(cfg.UserSecurityToken, options...)
-	case SlackClientTypeBot:
-		c = slack.New(cfg.BotSecurityToken, options...)
-	default:
-		return nil, fmt.Errorf("slack: creating user client failed: ")
-	}
+func newAPIClient(token string, options ...slackgo.Option) (*slackgo.Client, error) {
+	var c *slackgo.Client
+	options = append(options, slackgo.OptionDebug(false))
+	c = slackgo.New(token, options...)
 	return c, nil
 }
 
 // PostBlocksMessage takes the blocks and sends them to the default info channel
-func (c *SlackClient) PostBlocksMessage(blocks ...slack.Block) error {
-	opts := slack.MsgOptionBlocks(blocks...)
+func (c *Client) PostBlocksMessage(blocks ...slackgo.Block) error {
+	opts := slackgo.MsgOptionBlocks(blocks...)
 	return c.PostMessage(opts)
 }
 
 // PostMessage takes the message options sends it to the info channel
-func (c *SlackClient) PostMessage(opts slack.MsgOption) error {
+func (c *Client) PostMessage(opts slackgo.MsgOption) error {
 	if _, _, err := c.botClient.PostMessage(c.infoChannel.ID, opts); err != nil {
 		return fmt.Errorf("slack: failed posting message: %w", err)
 	}
@@ -59,18 +44,18 @@ func (c *SlackClient) PostMessage(opts slack.MsgOption) error {
 	return nil
 }
 
-// New returns a new slackclient with intialized bot & user client and loaded masterdata
-func New(cfg *config.SlackConfig) (*SlackClient, error) {
-	bot, err := newAPIClient(cfg, SlackClientTypeBot)
+// NewClient returns a new slackclient with intialized bot & user client and loaded masterdata
+func NewClient(cfg *config.SlackConfig) (*Client, error) {
+	bot, err := newAPIClient(cfg.BotSecurityToken)
 	if err != nil {
 		return nil, fmt.Errorf("slack: failed creating bot client: %w", err)
 	}
-	user, err := newAPIClient(cfg, SlackClientTypeUser)
+	user, err := newAPIClient(cfg.UserSecurityToken)
 	if err != nil {
 		return nil, fmt.Errorf("slack: failed creating user client: %w", err)
 	}
 
-	c := &SlackClient{
+	c := &Client{
 		botClient:     bot,
 		userClient:    user,
 		infoChannelID: cfg.InfoChannelID,
@@ -84,7 +69,7 @@ func New(cfg *config.SlackConfig) (*SlackClient, error) {
 }
 
 // LoadMasterData singleton master data to speed up
-func (c *SlackClient) LoadMasterData() (err error) {
+func (c *Client) LoadMasterData() (err error) {
 	slackChannelsTemp, err := c.botClient.GetConversationInfo(c.infoChannelID, true)
 	if err != nil {
 		return fmt.Errorf("slack: failed retrieving info channel '%s': %w", c.infoChannelID, err)
@@ -96,7 +81,7 @@ func (c *SlackClient) LoadMasterData() (err error) {
 		return fmt.Errorf("slack: failed retrieving users: %w", err)
 	}
 
-	slackGrpsTemp, err := c.botClient.GetUserGroups(slack.GetUserGroupsOptionIncludeUsers(true))
+	slackGrpsTemp, err := c.botClient.GetUserGroups(slackgo.GetUserGroupsOptionIncludeUsers(true))
 	if err != nil {
 		return fmt.Errorf("slack: failed retrieving user groups: %w", err)
 	}
@@ -111,13 +96,13 @@ func (c *SlackClient) LoadMasterData() (err error) {
 }
 
 // GetSlackGroup requests existing Group for given name
-func (c *SlackClient) GetSlackGroup(slackGroupHandle string) (slack.UserGroup, error) {
+func (c *Client) GetSlackGroup(slackGroupHandle string) (slackgo.UserGroup, error) {
 	if slackGroupHandle == "" {
-		return slack.UserGroup{}, fmt.Errorf("slack: finding group failed, empty handle")
+		return slackgo.UserGroup{}, fmt.Errorf("slack: finding group failed, empty handle")
 	}
 
 	// get the group we are interested in
-	var targetGroup slack.UserGroup
+	var targetGroup slackgo.UserGroup
 	for _, g := range c.groups {
 		if strings.EqualFold(g.Handle, slackGroupHandle) {
 			targetGroup = g
@@ -126,14 +111,14 @@ func (c *SlackClient) GetSlackGroup(slackGroupHandle string) (slack.UserGroup, e
 	}
 
 	if targetGroup.Handle == "" {
-		return slack.UserGroup{}, fmt.Errorf("slack: finding group handle '%s' failed. check config", slackGroupHandle)
+		return slackgo.UserGroup{}, fmt.Errorf("slack: finding group handle '%s' failed. check config", slackGroupHandle)
 	}
 
 	return targetGroup, nil
 }
 
 // MatchPDUsers returns slack users matching the given pagerduty users
-func (c *SlackClient) MatchPDUsers(pdUsers []pagerduty.User) ([]slack.User, error) {
+func (c *Client) MatchPDUsers(pdUsers []pd.User) ([]slackgo.User, error) {
 	// if no pdUsers given, we don't need to filter
 	if pdUsers == nil {
 		log.Warn("empty PD user list given!")
@@ -148,7 +133,7 @@ func (c *SlackClient) MatchPDUsers(pdUsers []pagerduty.User) ([]slack.User, erro
 }
 
 // AddToGroup sets an array of Slack User to an Slack Group (found by name), returns true if noop
-func (c *SlackClient) AddToGroup(groupHandle string, slackUsers []slack.User, dryrun bool) (noChange bool, err error) {
+func (c *Client) AddToGroup(groupHandle string, slackUsers []slackgo.User, dryrun bool) (noChange bool, err error) {
 	noChange = true
 
 	// get the group we are interested in
@@ -175,7 +160,7 @@ func (c *SlackClient) AddToGroup(groupHandle string, slackUsers []slack.User, dr
 		noChange = false
 	}
 
-	var userGroupAfter slack.UserGroup
+	var userGroupAfter slackgo.UserGroup
 	if !dryrun && !noChange {
 		userGroupAfter, err = c.userClient.UpdateUserGroupMembers(userGroupBefore.ID, strings.Join(slackUserIds, ","))
 		if err != nil {
@@ -218,7 +203,7 @@ func (c *SlackClient) AddToGroup(groupHandle string, slackUsers []slack.User, dr
 	return noChange, nil
 }
 
-func (c *SlackClient) DisableGroup(groupID string) error {
+func (c *Client) DisableGroup(groupID string) error {
 	userGroup, err := c.userClient.DisableUserGroup(groupID)
 	if err != nil {
 		return err
@@ -228,7 +213,7 @@ func (c *SlackClient) DisableGroup(groupID string) error {
 }
 
 // groupContainsUser returns true user is contained in the groupUserIDs
-func groupContainsUser(groupUserIDs []string, user slack.User) bool {
+func groupContainsUser(groupUserIDs []string, user slackgo.User) bool {
 	if len(groupUserIDs) == 0 {
 		return false
 	}
@@ -241,19 +226,19 @@ func groupContainsUser(groupUserIDs []string, user slack.User) bool {
 }
 
 // matchPDToSlackUsers returns a list of valid Slack users that match the list of PagerDuty users
-func (c *SlackClient) matchPDToSlackUsers(pdUsers []pagerduty.User) []slack.User {
-	var matchedSlackUsers []slack.User
+func (c *Client) matchPDToSlackUsers(pdUsers []pd.User) []slackgo.User {
+	var matchedSlackUsers []slackgo.User
 	for _, pd := range pdUsers {
 		if pd.Email == "" {
 			log.Infof("pagerduty: skipping user %s, no email assigned", pd.Name)
 			continue
 		}
-		for _, slack := range c.users {
-			if slack.Deleted {
+		for _, u := range c.users {
+			if u.Deleted {
 				continue
 			}
-			if strings.EqualFold(pd.Email, slack.Profile.Email) {
-				matchedSlackUsers = append(matchedSlackUsers, slack)
+			if strings.EqualFold(pd.Email, u.Profile.Email) {
+				matchedSlackUsers = append(matchedSlackUsers, u)
 			}
 		}
 	}
