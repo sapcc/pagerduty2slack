@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -42,7 +41,7 @@ type SlackConfig struct {
 	// Token to authenticate
 	BotSecurityToken  string `yaml:"securityTokenBot"`
 	UserSecurityToken string `yaml:"securityTokenUser"`
-	InfoChannel       string `yaml:"infoChannel"`
+	InfoChannelID     string `yaml:"infoChannelID"`
 	Workspace         string `yaml:"workspaceForChatLinks"`
 }
 
@@ -90,32 +89,23 @@ type PagerdutyTeamToSlackGroup struct {
 
 // SyncObjects Struct
 type SyncObjects struct {
-	SlackGroupHandle  string   `yaml:"slackGroupHandle"`
-	PagerdutyObjectID []string `yaml:"pdObjectIds"`
+	SlackGroupHandle   string   `yaml:"slackGroupHandle"`
+	PagerdutyObjectIDs []string `yaml:"pdObjectIds"`
 }
 
 // NewConfig reads the configuration from the given filePath.
 func NewConfig(configFilePath string) (cfg Config, err error) {
 	if configFilePath == "" {
-		return cfg, errors.New("path to configuration file not provided")
+		return cfg, fmt.Errorf("path to configuration file not provided")
 	}
 
 	cfgBytes, err := os.ReadFile(configFilePath)
 	if err != nil {
-		return cfg, fmt.Errorf("read configuration file: %s", err.Error())
+		return cfg, fmt.Errorf("reading configuration file failed: %w", err)
 	}
 	err = yaml.Unmarshal(cfgBytes, &cfg)
 	if err != nil {
-		return cfg, fmt.Errorf("parse configuration: %s", err.Error())
+		return cfg, fmt.Errorf("parsing configuration failed: %w", err)
 	}
-
-	/*   if err := cfg.Slack.validate(); err != nil {
-	    log.Error("invalid slack configuration", "err", err)
-	}
-
-	if err := cfg.Ldap.validate(); err != nil {
-	    log.Error("invalid alertmanager configuration", "err", err)
-	}
-	*/
 	return cfg, nil
 }

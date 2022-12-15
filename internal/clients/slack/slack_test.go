@@ -1,4 +1,4 @@
-package clients
+package slack
 
 import (
 	"encoding/json"
@@ -25,7 +25,7 @@ type responseMetadata struct {
 	NextCursor string `json:"next_cursor"`
 }
 
-func setup() *slacktest.Server {
+func setup(t *testing.T) (*Client, *slacktest.Server) {
 	testServer := slacktest.NewTestServer()
 	go testServer.Start()
 
@@ -53,58 +53,65 @@ func setup() *slacktest.Server {
 	testServer.Handle("/usergroups.disable", testData.createDisableUserGroupsHandler)
 	testServer.Handle("/usergroups.users.update", testData.createUpdateUserGroupsUserHandler)
 
-	_slackInfoChannelName = "general"
-
-	cfg := config.SlackConfig{
+	cfg := &config.SlackConfig{
 		UserSecurityToken: "TEST_TOKEN",
 		BotSecurityToken:  "TEST_TOKEN",
+		InfoChannelID:     "general",
 	}
+	var err error
 	apiURLOption := slack.OptionAPIURL(testServer.GetAPIURL())
-	defaultSlackClientBot = NewSlackClient(cfg, SlackClientTypeBot, apiURLOption)
-	defaultSlackClientUser = NewSlackClient(cfg, SlackClientTypeUser, apiURLOption)
-	return testServer
-}
 
-func TestGetChannels(t *testing.T) {
-	testServer := setup()
-	defer testServer.Stop()
-	channels, err := GetChannels()
-	if assert.NoError(t, err) {
-		assert.NotEmpty(t, channels)
+	botMock, err := newAPIClient(cfg.BotSecurityToken, apiURLOption)
+	if err != nil {
+		t.Fatalf("failed setting up test server: %s", err.Error())
 	}
-}
+	userMock, err := newAPIClient(cfg.UserSecurityToken, apiURLOption)
+	if err != nil {
+		t.Fatalf("failed setting up test server: %s", err.Error())
+	}
 
-func TestGetSlackGroup(t *testing.T) {
-	testServer := setup()
-	defer testServer.Stop()
-	if err := LoadSlackMasterData(); err != nil {
+	client := &Client{
+		botClient:     botMock,
+		userClient:    userMock,
+		infoChannelID: cfg.InfoChannelID,
+	}
+
+	if err := client.LoadMasterData(); err != nil {
 		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
 	}
 
-	group, err := GetSlackGroup("admins")
+	return client, testServer
+}
+
+func TestGetSlackGroup(t *testing.T) {
+	cut, testServer := setup(t)
+	defer testServer.Stop()
+
+	group, err := cut.GetSlackGroup("admins")
 	if assert.NoError(t, err) {
 		assert.Equal(t, "Team Admins", group.Name)
 	}
 }
 
 func TestLoadSlackMasterData(t *testing.T) {
-	testServer := setup()
+	cut, testServer := setup(t)
 	defer testServer.Stop()
 
-	assert.NoError(t, LoadSlackMasterData())
-	assert.NotEmpty(t, slackChannels)
-	assert.NotEmpty(t, slackUserList)
-	assert.NotEmpty(t, slackGrps)
+	assert.NoError(t, cut.LoadMasterData())
+	assert.NotNil(t, cut.infoChannel)
+	assert.NotEmpty(t, cut.users)
+	assert.NotEmpty(t, cut.groups)
 }
 
 func TestGetSlackUser(t *testing.T) {
+	cut := Client{}
 	pdUsers := []pagerduty.User{{Email: "spengler@ghostbusters.example.com"}}
-	slackUserList = []slack.User{
+	cut.users = []slack.User{
 		{Profile: slack.UserProfile{Email: "spengler@ghostbusters.example.com"}},
 		{Profile: slack.UserProfile{Email: "max@mustermann.example.com"}},
 	}
 
-	actualUsers, err := GetSlackUser(pdUsers)
+	actualUsers, err := cut.MatchPDUsers(pdUsers)
 
 	if assert.NoError(t, err) {
 		assert.Len(t, actualUsers, 1)
@@ -113,80 +120,36 @@ func TestGetSlackUser(t *testing.T) {
 }
 
 func TestSetSlackUserGroup(t *testing.T) {
-	testServer := setup()
+	cut, testServer := setup(t)
 	defer testServer.Stop()
 
-	if err := LoadSlackMasterData(); err != nil {
-		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
-	}
-
-	jobInfo := &config.JobInfo{JobType: config.PdTeamSync,
-		Cfg: config.Config{
-			Jobs: config.JobsConfig{
-				TeamSync: []config.PagerdutyTeamToSlackGroup{
-					{
-						ObjectsToSync: config.SyncObjects{
-							SlackGroupHandle: "admins"},
-					},
-				},
-			},
-			Global: config.GlobalConfig{
-				Write: true,
-			},
-		},
-	}
 	slackUsers := []slack.User{{ID: "W012A3CDE"}}
-	noChange := SetSlackGroupUser(jobInfo, slackUsers)
+	noChange, err := cut.AddToGroup("admins", slackUsers, false)
 
+	assert.NoError(t, err)
 	assert.False(t, noChange)
 }
 
 func TestSetSlackUserGroupNoChange(t *testing.T) {
-	testServer := setup()
+	cut, testServer := setup(t)
 	defer testServer.Stop()
 
-	if err := LoadSlackMasterData(); err != nil {
-		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
-	}
-
-	jobInfo := &config.JobInfo{JobType: config.PdTeamSync,
-		Cfg: config.Config{
-			Jobs: config.JobsConfig{
-				TeamSync: []config.PagerdutyTeamToSlackGroup{
-					{
-						ObjectsToSync: config.SyncObjects{
-							SlackGroupHandle: "admins"},
-					},
-				},
-			},
-			Global: config.GlobalConfig{
-				Write: false,
-			},
-		},
-	}
 	slackUsers := []slack.User{
 		{ID: "W012A3CDE"},
 		{ID: "W07QCRPA4"},
 	}
-	noChange := SetSlackGroupUser(jobInfo, slackUsers)
+	noChange, err := cut.AddToGroup("admins", slackUsers, false)
 
+	assert.NoError(t, err)
 	assert.True(t, noChange)
 }
 
 func TestDisableSlackGroup(t *testing.T) {
-	testServer := setup()
+	cut, testServer := setup(t)
 	defer testServer.Stop()
 
-	if err := LoadSlackMasterData(); err != nil {
-		t.Fatalf("unexpected err loading masterdata: %s", err.Error())
-	}
-
-	jobInfo := &config.JobInfo{
-		SlackGroupObject: slack.UserGroup{ID: "S0615G0KT"},
-	}
-
-	DisableSlackGroup(jobInfo)
-	assert.NoError(t, jobInfo.Error)
+	err := cut.DisableGroup("S0615G0KT")
+	assert.NoError(t, err)
 }
 
 func (sd *slackTestData) createListConversationsHandler(w http.ResponseWriter, r *http.Request) {
