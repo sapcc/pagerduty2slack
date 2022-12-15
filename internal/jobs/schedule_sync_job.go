@@ -123,7 +123,7 @@ func (s *PagerdutyScheduleToSlackJob) SlackInfoMessageBody() *slack.TextBlockObj
 
 	return &slack.TextBlockObject{
 		Type:     slack.MarkdownType,
-		Text:     fmt.Sprintf("*Who is on shift:*\n - %s", strings.Join(sL, ",\n -")),
+		Text:     fmt.Sprintf("*Who is on shift:*\n - %s", strings.Join(sL, ",\n - ")),
 		Emoji:    false,
 		Verbatim: false,
 	}
