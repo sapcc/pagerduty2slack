@@ -148,16 +148,17 @@ func (c *Client) AddToGroup(groupHandle string, slackUsers []slackgo.User, dryru
 
 	// we need a list of IDs
 	var slackUserIds []string
-	if len(slackUsers) == len(userGroupBefore.Users) {
-		for _, user := range slackUsers {
-			if !groupContainsUser(userGroupBefore.Users, user) {
-				slackUserIds = append(slackUserIds, user.ID)
-				noChange = false
-				continue
-			}
+	for _, user := range slackUsers {
+		slackUserIds = append(slackUserIds, user.ID)
+		if !groupContainsUser(userGroupBefore.Users, user) {
+			noChange = false
+			continue
 		}
-	} else {
-		noChange = false
+		noChange = true
+	}
+
+	if noChange {
+		slackUserIds = nil
 	}
 
 	var userGroupAfter slackgo.UserGroup
