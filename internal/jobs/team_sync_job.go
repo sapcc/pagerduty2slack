@@ -50,6 +50,7 @@ func NewTeamSyncJob(cfg config.PagerdutyTeamToSlackGroup, dryrun bool, pd *pager
 // Run syncs pagerduty team(s) members to slack user group
 func (t *PagerdutyTeamToSlackJob) Run() error {
 	log.Info(t.Name())
+	t.err = nil
 
 	// find members of given group
 	pdUsers, pdTeams, err := t.pd.TeamMembers(t.pagerDutyIDs)

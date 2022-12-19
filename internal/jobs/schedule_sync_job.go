@@ -51,6 +51,7 @@ func NewScheduleSyncJob(cfg config.PagerdutyScheduleOnDutyToSlackGroup, dryrun b
 // Run syncs pagerduty schedule members to slack user group
 func (s *PagerdutyScheduleToSlackJob) Run() error {
 	log.Info(s.Name())
+	s.err = nil
 
 	tfF, err := time.ParseDuration(s.syncOpts.HandoverTimeFrameForward)
 	if err != nil {
