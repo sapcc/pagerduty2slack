@@ -87,6 +87,7 @@ func (c *Client) ListOnCallUsers(scheduleIDs []string, since, until offsetInHour
 func (c *Client) listOnCallsFinalLayer(scheduleIDs []string, since, until offsetInHours) (users []pd.User, schedules []pd.APIObject, err error) {
 	onCallOpts := pd.ListOnCallOptions{
 		ScheduleIDs: scheduleIDs,
+		TimeZone:    "UTC",
 		Since:       util.TimestampToString(time.Now().UTC().Add(-since)),
 		Until:       util.TimestampToString(time.Now().UTC().Add(until)),
 		//Includes: []string{"users","schedules"}, // doesn't work - workaround sub request
