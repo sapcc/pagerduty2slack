@@ -39,8 +39,8 @@ type JobsConfig struct {
 // SlackConfig Struct
 type SlackConfig struct {
 	// Token to authenticate
-	BotSecurityToken  string `yaml:"securityTokenBot"`
-	UserSecurityToken string `yaml:"securityTokenUser"`
+	BotSecurityToken  string
+	UserSecurityToken string
 	InfoChannelID     string `yaml:"infoChannelID"`
 	Workspace         string `yaml:"workspaceForChatLinks"`
 }
@@ -48,7 +48,7 @@ type SlackConfig struct {
 // PagerdutyConfig Struct
 type PagerdutyConfig struct {
 	// Token to authenticate
-	AuthToken string `yaml:"authToken"`
+	AuthToken string
 	APIUser   string `yaml:"apiUser"`
 }
 
@@ -107,5 +107,28 @@ func NewConfig(configFilePath string) (cfg Config, err error) {
 	if err != nil {
 		return cfg, fmt.Errorf("parsing configuration failed: %w", err)
 	}
+	err = loadEnvVars(&cfg)
+	if err != nil {
+		return cfg, err
+	}
 	return cfg, nil
+}
+
+// loadEnvVars fills credentials in the config from env vars
+func loadEnvVars(cfg *Config) error {
+	cfg.Slack.BotSecurityToken = os.Getenv("SLACK_BOT_TOKEN")
+	if cfg.Slack.BotSecurityToken == "" {
+		return fmt.Errorf("env variable `SLACK_BOT_TOKEN` is not set")
+	}
+
+	cfg.Slack.UserSecurityToken = os.Getenv("SLACK_USER_TOKEN")
+	if cfg.Slack.UserSecurityToken == "" {
+		return fmt.Errorf("env variable `SLACK_USER_TOKEN` is not set")
+	}
+
+	cfg.Pagerduty.AuthToken = os.Getenv("PAGERDUTY_TOKEN")
+	if cfg.Pagerduty.AuthToken == "" {
+		return fmt.Errorf("env variable `PAGERDUTY_TOKEN` is not set")
+	}
+	return nil
 }
