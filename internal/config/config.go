@@ -49,7 +49,7 @@ type SlackConfig struct {
 type PagerdutyConfig struct {
 	// Token to authenticate
 	AuthToken string
-	APIUser   string `yaml:"apiUser"`
+	APIUser   string
 }
 
 // PagerdutyScheduleOnDutyToSlackGroup Struct
@@ -130,5 +130,11 @@ func loadEnvVars(cfg *Config) error {
 	if cfg.Pagerduty.AuthToken == "" {
 		return fmt.Errorf("env variable `PAGERDUTY_TOKEN` is not set")
 	}
+
+	cfg.Pagerduty.APIUser = os.Getenv("PAGERDUTY_USER")
+	if cfg.Pagerduty.APIUser == "" {
+		return fmt.Errorf("env variable `PAGERDUTY_USER` is not set")
+	}
+
 	return nil
 }
